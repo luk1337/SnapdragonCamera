@@ -34,7 +34,7 @@ import android.view.View;
 import com.android.camera.PhotoUI;
 import com.android.camera.util.CameraUtil;
 import org.codeaurora.snapcam.R;
-import org.codeaurora.camera.ExtendedFace;
+import org.codeaurora.snapcam.wrapper.ExtendedFaceWrapper;
 
 public class FaceView extends View
     implements FocusIndicator, Rotatable,
@@ -233,113 +233,112 @@ public class FaceView extends View
                 mRect.offset(dx, dy);
                 canvas.drawOval(mRect, mPaint);
 
-                if (mFaces[i] instanceof ExtendedFace) {
-                    ExtendedFace face = (ExtendedFace)mFaces[i];
+                if (ExtendedFaceWrapper.isExtendedFaceInstance(mFaces[i])) {
                     float[] point = new float[4];
                     int delta_x = mFaces[i].rect.width() / 12;
                     int delta_y = mFaces[i].rect.height() / 12;
-                    Log.e(TAG, "blink: (" + face.getLeftEyeBlinkDegree()+ ", " +
-                        face.getRightEyeBlinkDegree() + ")");
-                    if (face.leftEye != null) {
+                    Log.e(TAG, "blink: (" + ExtendedFaceWrapper.getLeftEyeBlinkDegree(mFaces[i])+ ", " +
+                            ExtendedFaceWrapper.getRightEyeBlinkDegree(mFaces[i]) + ")");
+                    if (mFaces[i].leftEye != null) {
                         if ((mDisplayRotation == 0) ||
                                 (mDisplayRotation == 180)) {
-                            point[0] = face.leftEye.x;
-                            point[1] = face.leftEye.y - delta_y / 2;
-                            point[2] = face.leftEye.x;
-                            point[3] = face.leftEye.y + delta_y / 2;
+                            point[0] = mFaces[i].leftEye.x;
+                            point[1] = mFaces[i].leftEye.y - delta_y / 2;
+                            point[2] = mFaces[i].leftEye.x;
+                            point[3] = mFaces[i].leftEye.y + delta_y / 2;
                         } else {
-                            point[0] = face.leftEye.x - delta_x / 2;
-                            point[1] = face.leftEye.y;
-                            point[2] = face.leftEye.x + delta_x / 2;
-                            point[3] = face.leftEye.y;
+                            point[0] = mFaces[i].leftEye.x - delta_x / 2;
+                            point[1] = mFaces[i].leftEye.y;
+                            point[2] = mFaces[i].leftEye.x + delta_x / 2;
+                            point[3] = mFaces[i].leftEye.y;
 
                         }
                         mMatrix.mapPoints (point);
-                        if (face.getLeftEyeBlinkDegree() >= blink_threshold) {
+                        if (ExtendedFaceWrapper.getLeftEyeBlinkDegree(mFaces[i]) >= blink_threshold) {
                             canvas.drawLine(point[0]+ dx, point[1]+ dy,
                                 point[2]+ dx, point[3]+ dy, mPaint);
                         }
                     }
-                    if (face.rightEye != null) {
+                    if (mFaces[i].rightEye != null) {
                         if ((mDisplayRotation == 0) ||
                                 (mDisplayRotation == 180)) {
-                            point[0] = face.rightEye.x;
-                            point[1] = face.rightEye.y - delta_y / 2;
-                            point[2] = face.rightEye.x;
-                            point[3] = face.rightEye.y + delta_y / 2;
+                            point[0] = mFaces[i].rightEye.x;
+                            point[1] = mFaces[i].rightEye.y - delta_y / 2;
+                            point[2] = mFaces[i].rightEye.x;
+                            point[3] = mFaces[i].rightEye.y + delta_y / 2;
                         } else {
-                            point[0] = face.rightEye.x - delta_x / 2;
-                            point[1] = face.rightEye.y;
-                            point[2] = face.rightEye.x + delta_x / 2;
-                            point[3] = face.rightEye.y;
+                            point[0] = mFaces[i].rightEye.x - delta_x / 2;
+                            point[1] = mFaces[i].rightEye.y;
+                            point[2] = mFaces[i].rightEye.x + delta_x / 2;
+                            point[3] = mFaces[i].rightEye.y;
                         }
                         mMatrix.mapPoints (point);
-                        if (face.getRightEyeBlinkDegree() >= blink_threshold) {
+                        if (ExtendedFaceWrapper.getRightEyeBlinkDegree(mFaces[i]) >= blink_threshold) {
                             //Add offset to the points if the rect has an offset
                             canvas.drawLine(point[0] + dx, point[1] + dy,
                                 point[2] +dx, point[3] +dy, mPaint);
                         }
                     }
 
-                    if (face.getLeftRightGazeDegree() != 0
-                        || face.getTopBottomGazeDegree() != 0 ) {
+                    if (ExtendedFaceWrapper.getLeftRightGazeDegree(mFaces[i]) != 0
+                        || ExtendedFaceWrapper.getTopBottomGazeDegree(mFaces[i]) != 0 ) {
 
                         double length =
-                            Math.sqrt((face.leftEye.x - face.rightEye.x) *
-                                (face.leftEye.x - face.rightEye.x) +
-                                (face.leftEye.y - face.rightEye.y) *
-                                (face.leftEye.y - face.rightEye.y)) / 2.0;
-                        double nGazeYaw = -face.getLeftRightGazeDegree();
-                        double nGazePitch = -face.getTopBottomGazeDegree();
+                            Math.sqrt((mFaces[i].leftEye.x - mFaces[i].rightEye.x) *
+                                (mFaces[i].leftEye.x - mFaces[i].rightEye.x) +
+                                (mFaces[i].leftEye.y - mFaces[i].rightEye.y) *
+                                (mFaces[i].leftEye.y - mFaces[i].rightEye.y)) / 2.0;
+                        double nGazeYaw = -ExtendedFaceWrapper.getLeftRightGazeDegree(mFaces[i]);
+                        double nGazePitch = -ExtendedFaceWrapper.getTopBottomGazeDegree(mFaces[i]);
                         float gazeRollX =
                             (float)((-Math.sin(nGazeYaw/180.0*Math.PI) *
-                                Math.cos(-face.getRollDirection()/
+                                Math.cos(-ExtendedFaceWrapper.getRollDirection(mFaces[i])/
                                     180.0*Math.PI) +
                                 Math.sin(nGazePitch/180.0*Math.PI) *
                                 Math.cos(nGazeYaw/180.0*Math.PI) *
-                                Math.sin(-face.getRollDirection()/
+                                Math.sin(-ExtendedFaceWrapper.getRollDirection(mFaces[i])/
                                     180.0*Math.PI)) *
                                 (-length) + 0.5);
                         float gazeRollY =
                             (float)((Math.sin(-nGazeYaw/180.0*Math.PI) *
-                                Math.sin(-face.getRollDirection()/
+                                Math.sin(-ExtendedFaceWrapper.getRollDirection(mFaces[i])/
                                     180.0*Math.PI)-
                                 Math.sin(nGazePitch/180.0*Math.PI) *
                                 Math.cos(nGazeYaw/180.0*Math.PI) *
-                                Math.cos(-face.getRollDirection()/
+                                Math.cos(-ExtendedFaceWrapper.getRollDirection(mFaces[i])/
                                     180.0*Math.PI)) *
                                 (-length) + 0.5);
 
-                        if (face.getLeftEyeBlinkDegree() < blink_threshold) {
+                        if (ExtendedFaceWrapper.getLeftEyeBlinkDegree(mFaces[i]) < blink_threshold) {
                             if ((mDisplayRotation == 90) ||
                                     (mDisplayRotation == 270)) {
-                                point[0] = face.leftEye.x;
-                                point[1] = face.leftEye.y;
-                                point[2] = face.leftEye.x + gazeRollX;
-                                point[3] = face.leftEye.y + gazeRollY;
+                                point[0] = mFaces[i].leftEye.x;
+                                point[1] = mFaces[i].leftEye.y;
+                                point[2] = mFaces[i].leftEye.x + gazeRollX;
+                                point[3] = mFaces[i].leftEye.y + gazeRollY;
                             } else {
-                                point[0] = face.leftEye.x;
-                                point[1] = face.leftEye.y;
-                                point[2] = face.leftEye.x + gazeRollY;
-                                point[3] = face.leftEye.y + gazeRollX;
+                                point[0] = mFaces[i].leftEye.x;
+                                point[1] = mFaces[i].leftEye.y;
+                                point[2] = mFaces[i].leftEye.x + gazeRollY;
+                                point[3] = mFaces[i].leftEye.y + gazeRollX;
                             }
                             mMatrix.mapPoints (point);
                             canvas.drawLine(point[0] +dx, point[1] + dy,
                                 point[2] + dx, point[3] +dy, mPaint);
                         }
 
-                        if (face.getRightEyeBlinkDegree() < blink_threshold) {
+                        if (ExtendedFaceWrapper.getRightEyeBlinkDegree(mFaces[i]) < blink_threshold) {
                             if ((mDisplayRotation == 90) ||
                                     (mDisplayRotation == 270)) {
-                                point[0] = face.rightEye.x;
-                                point[1] = face.rightEye.y;
-                                point[2] = face.rightEye.x + gazeRollX;
-                                point[3] = face.rightEye.y + gazeRollY;
+                                point[0] = mFaces[i].rightEye.x;
+                                point[1] = mFaces[i].rightEye.y;
+                                point[2] = mFaces[i].rightEye.x + gazeRollX;
+                                point[3] = mFaces[i].rightEye.y + gazeRollY;
                             } else {
-                                point[0] = face.rightEye.x;
-                                point[1] = face.rightEye.y;
-                                point[2] = face.rightEye.x + gazeRollY;
-                                point[3] = face.rightEye.y + gazeRollX;
+                                point[0] = mFaces[i].rightEye.x;
+                                point[1] = mFaces[i].rightEye.y;
+                                point[2] = mFaces[i].rightEye.x + gazeRollY;
+                                point[3] = mFaces[i].rightEye.y + gazeRollX;
 
                             }
                             mMatrix.mapPoints (point);
@@ -348,35 +347,35 @@ public class FaceView extends View
                         }
                     }
 
-                    if (face.mouth != null) {
-                        Log.e(TAG, "smile: " + face.getSmileDegree() + "," +
-                            face.getSmileScore());
-                        if (face.getSmileDegree() < smile_threashold_no_smile) {
-                            point[0] = face.mouth.x + dx - delta_x;
-                            point[1] = face.mouth.y;
-                            point[2] = face.mouth.x + dx + delta_x;
-                            point[3] = face.mouth.y;
+                    if (mFaces[i].mouth != null) {
+                        Log.e(TAG, "smile: " + ExtendedFaceWrapper.getSmileDegree(mFaces[i]) + "," +
+                                ExtendedFaceWrapper.getSmileScore(mFaces[i]));
+                        if (ExtendedFaceWrapper.getSmileDegree(mFaces[i]) < smile_threashold_no_smile) {
+                            point[0] = mFaces[i].mouth.x + dx - delta_x;
+                            point[1] = mFaces[i].mouth.y;
+                            point[2] = mFaces[i].mouth.x + dx + delta_x;
+                            point[3] = mFaces[i].mouth.y;
 
                             Matrix faceMatrix = new Matrix(mMatrix);
-                            faceMatrix.preRotate(face.getRollDirection(),
-                                    face.mouth.x, face.mouth.y);
+                            faceMatrix.preRotate(ExtendedFaceWrapper.getRollDirection(mFaces[i]),
+                                    mFaces[i].mouth.x, mFaces[i].mouth.y);
                             faceMatrix.mapPoints(point);
                             canvas.drawLine(point[0] + dx, point[1] + dy,
                                 point[2] + dx, point[3] + dy, mPaint);
-                        } else if (face.getSmileDegree() <
+                        } else if (ExtendedFaceWrapper.getSmileDegree(mFaces[i]) <
                             smile_threashold_small_smile) {
                             int rotation_mouth = 360 - mDisplayRotation;
-                            mRect.set(face.mouth.x-delta_x,
-                                face.mouth.y-delta_y, face.mouth.x+delta_x,
-                                face.mouth.y+delta_y);
+                            mRect.set(mFaces[i].mouth.x-delta_x,
+                                mFaces[i].mouth.y-delta_y, mFaces[i].mouth.x+delta_x,
+                                mFaces[i].mouth.y+delta_y);
                             mMatrix.mapRect(mRect);
                             mRect.offset(dx, dy);
                             canvas.drawArc(mRect, rotation_mouth,
                                     180, true, mPaint);
                         } else {
-                            mRect.set(face.mouth.x-delta_x,
-                                face.mouth.y-delta_y, face.mouth.x+delta_x,
-                                face.mouth.y+delta_y);
+                            mRect.set(mFaces[i].mouth.x-delta_x,
+                                mFaces[i].mouth.y-delta_y, mFaces[i].mouth.x+delta_x,
+                                mFaces[i].mouth.y+delta_y);
                             mMatrix.mapRect(mRect);
                             mRect.offset(dx, dy);
                             canvas.drawOval(mRect, mPaint);
