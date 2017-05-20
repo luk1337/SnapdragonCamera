@@ -1,4 +1,3 @@
-ifneq ($(TARGET_USES_AOSP),true)
 LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
@@ -12,6 +11,7 @@ LOCAL_STATIC_JAVA_LIBRARIES += xmp_toolkit
 LOCAL_SRC_FILES := $(call all-java-files-under, src)
 LOCAL_SRC_FILES += $(call all-java-files-under, src_pd)
 LOCAL_SRC_FILES += $(call all-java-files-under, src_pd_gcam)
+LOCAL_SRC_FILES += $(call all-java-files-under, src_wrapper)
 LOCAL_SRC_FILES += $(call all-renderscript-files-under, rs)
 
 LOCAL_RESOURCE_DIR += $(LOCAL_PATH)/res
@@ -27,6 +27,7 @@ LOCAL_PRIVILEGED_MODULE := true
 
 #LOCAL_SDK_VERSION := current
 LOCAL_RENDERSCRIPT_TARGET_API := 23
+LOCAL_JACK_ENABLED := disabled
 
 LOCAL_OVERRIDES_PACKAGES := Camera2
 
@@ -44,4 +45,3 @@ endif
 include $(BUILD_PACKAGE)
 
 include $(call all-makefiles-under, $(LOCAL_PATH))
-endif

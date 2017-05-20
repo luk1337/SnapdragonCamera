@@ -39,11 +39,15 @@ import android.os.Looper;
 import android.os.Message;
 import android.util.Log;
 import android.view.SurfaceHolder;
+/* Disable_temporary
 import android.hardware.Camera.CameraDataCallback;
 import android.hardware.Camera.CameraMetaDataCallback;
+*/
 import com.android.camera.util.ApiHelper;
 import android.os.ConditionVariable;
 import java.lang.reflect.Method;
+
+import org.codeaurora.snapcam.wrapper.CameraWrapper;
 
 /**
  * A class to implement {@link CameraManager} of the Android camera framework.
@@ -363,19 +367,26 @@ class AndroidCameraManagerImpl implements CameraManager {
                         return;
 
                     case SET_HISTOGRAM_MODE:
-                        mCamera.setHistogramMode((CameraDataCallback) msg.obj);
+                        /* Disable_temporary
+                        CameraWrapper.setHistogramMode(mCamera, (Camera.CameraDataCallback) msg.obj);
+                        */
                         break;
 
                     case SEND_HISTOGRAM_DATA:
-                        mCamera.sendHistogramData();
+                        /* Disable_temporary
+                        CameraWrapper.sendHistogramData(mCamera);
+                        */
                         break;
 
                     case SET_LONGSHOT:
-                        mCamera.setLongshot((Boolean) msg.obj);
+                        CameraWrapper.setLongshot(mCamera, (Boolean) msg.obj);
                         break;
 
                     case SET_AUTO_HDR_MODE:
-                        mCamera.setMetadataCb((CameraMetaDataCallback) msg.obj);
+                        /* Disable_temporary
+                        CameraWrapper.setMetadataCb(mCamera,
+                                (Camera.CameraMetaDataCallback) msg.obj);
+                        */
                         break;
 
                     default:
@@ -469,11 +480,11 @@ class AndroidCameraManagerImpl implements CameraManager {
         public void lock() {
             mCameraHandler.sendEmptyMessage(LOCK);
         }
-
+        /* Disable_temporary
         @Override
-        public void setMetadataCb(CameraMetaDataCallback cb){
+        public void setMetadataCb(Camera.CameraMetaDataCallback cb){
             mCameraHandler.obtainMessage(SET_AUTO_HDR_MODE, cb).sendToTarget();
-        }
+        } */
 
         @Override
         public void setPreviewTexture(SurfaceTexture surfaceTexture) {
@@ -629,10 +640,12 @@ class AndroidCameraManagerImpl implements CameraManager {
                     new Boolean(enable)).sendToTarget();
         }
 
+        /* Disable_temporary
         @Override
-        public void setHistogramMode(CameraDataCallback cb) {
+        public void setHistogramMode(Camera.CameraDataCallback cb) {
             mCameraHandler.obtainMessage(SET_HISTOGRAM_MODE, cb).sendToTarget();
         }
+        */
         @Override
         public void sendHistogramData() {
             mCameraHandler.sendEmptyMessage(SEND_HISTOGRAM_DATA);
