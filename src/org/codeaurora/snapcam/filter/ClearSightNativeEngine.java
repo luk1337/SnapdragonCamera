@@ -475,7 +475,7 @@ public class ClearSightNativeEngine {
             final ByteBuffer buf = ByteBuffer.wrap(bytes);
             buf.order(ByteOrder.LITTLE_ENDIAN);
             CamSystemCalibrationData data = createFromByteBuff(buf);
-
+            
             if(DEBUG) {
                 StringBuilder sb = new StringBuilder();
                 sb.append("OTP Calib Data:");

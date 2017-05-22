@@ -36,6 +36,16 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
     </FrameLayout>
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center_vertical|center_horizontal">
+        <SurfaceView
+            android:id="@+id/mdp_preview_content_aux"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:visibility="gone"/>
+    </FrameLayout>
     <View
         android:id="@+id/preview_cover"
         android:layout_width="match_parent"
