@@ -44,6 +44,7 @@ import android.hardware.Camera.CameraMetaDataCallback;
 import com.android.camera.util.ApiHelper;
 import android.os.ConditionVariable;
 import android.view.SurfaceView;
+import android.os.SystemProperties;
 
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
@@ -108,10 +109,13 @@ class AndroidCameraManagerImpl implements CameraManager {
     private static final int CAMERA_HAL_API_VERSION_1_0 = 0x100;
     private static final int AUXILIARY_CAMERA_ID = 2;
 
+    private static final String PROPERTY_AUXILIARY_CAMERA = "snapcam.bokeh.auxiliary.id";
+
     private CameraHandler mCameraHandler;
     private android.hardware.Camera mCamera;
     private android.hardware.Camera mCamera2;
-    private int mAuxiliaryCameraId = AUXILIARY_CAMERA_ID;
+    private int mAuxiliaryCameraId = SystemProperties.getInt(PROPERTY_AUXILIARY_CAMERA,
+            AUXILIARY_CAMERA_ID);
     private int mPrimaryCameraId = 0;
     private SurfaceHolder mAuxSurfaceHolder;
 

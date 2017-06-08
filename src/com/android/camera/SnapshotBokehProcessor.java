@@ -30,9 +30,14 @@ package com.android.camera;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.ImageFormat;
+import android.graphics.Matrix;
+import android.graphics.Paint;
 import android.graphics.Point;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.YuvImage;
 import android.location.Location;
 import android.os.Handler;
@@ -58,6 +63,7 @@ import java.util.TimeZone;
 
 import com.android.camera.PhotoModule.NamedImages.NamedEntity;
 import com.android.camera.imageprocessor.filter.ImageFilter;
+import com.android.camera.util.CameraUtil;
 
 import org.codeaurora.snapcam.filter.ClearSightNativeEngine;
 import org.codeaurora.snapcam.filter.DDMNativeEngine;
@@ -153,7 +159,7 @@ public class SnapshotBokehProcessor {
         }
         ProcessTask task = new ProcessTask(namedEntity);
         GdepthProcess gdepthProcess = new GdepthProcess(namedEntity);
-        BokehProcess bokehProcess = new BokehProcess(namedEntity,loc,orientation);
+        BokehProcess bokehProcess = new BokehProcess(namedEntity,loc,orientation,primary.getFocus());
         task.setGdepthProcess(gdepthProcess);
         task.setBokehProcess(bokehProcess);
         mTask.put(namedEntity, task);
@@ -404,11 +410,13 @@ public class SnapshotBokehProcessor {
         private NamedEntity mNameEntity;
         private int mOrientation;
         private Location mLoc;
+        private Rect mFocus;
 
-        public BokehProcess(NamedEntity namedEntity, Location loc,int orientation) {
+        public BokehProcess(NamedEntity namedEntity, Location loc,int orientation,Rect focus) {
             mNameEntity = namedEntity;
             mLoc = loc;
             mOrientation = orientation;
+            mFocus = focus;
         }
 
         public void setDepth(GDepth depth) {
@@ -474,12 +482,29 @@ public class SnapshotBokehProcessor {
                     height : (roiRect.bottom - roiRect.top);
             int[] roi = new int[] {
                     roiRect.left,roiRect.top,roiWidth,roiHeight};
-            if (dualCameraEffect.initialize(mPrimary, Gdepth, roi,renderwidth, renderHeight,1.0f)) {
+            if (dualCameraEffect.initialize(mPrimary, Gdepth, roi,renderwidth, renderHeight,0.0f)) {
                 mBokeh = Bitmap.createBitmap(renderwidth,renderHeight, Bitmap.Config.ARGB_8888);
-                Point center = new Point(roiRect.centerX(),roiRect.centerY());
+                Point center;
+                if (mFocus != null) {
+                    Matrix matrix = new Matrix();
+                    CameraUtil.prepareMatrix(matrix,false,0,roiRect);
+                    RectF focus = CameraUtil.rectToRectF(mFocus);
+                    matrix.mapRect(focus);
+                    center = new Point((int)focus.centerX(),(int)focus.centerY());
+                }else {
+                    center = new Point(roiRect.centerX(),roiRect.centerY());
+
+                }
                 dualCameraEffect.map(center);
                 ret = dualCameraEffect.render(
                         DualCameraEffect.REFOCUS_CIRCLE, center.x, center.y, mBokeh);
+                if (DEBUG) {
+                    Canvas canvas = new Canvas(mBokeh);
+                    Paint paint = new Paint();
+                    paint.setColor(Color.RED);
+                    paint.setStrokeWidth(5.0f);
+                    canvas.drawCircle(center.x, center.y, 30,paint);
+                }
             }
             dualCameraEffect.release();
             return ret;
@@ -542,6 +567,7 @@ public class SnapshotBokehProcessor {
         private int mHeight;
         private int mScanline;
         private int[] mStrides;
+        private Rect mFocus;
 
         public YuvImageSize(int width, int height, int[] strides, int scanline){
             mWidth = width;
@@ -564,6 +590,12 @@ public class SnapshotBokehProcessor {
 
         public int getScanline() {
             return mScanline;
+        }
+
+        public Rect getFocus() {return mFocus;}
+
+        public void setFocus(Rect focus) {
+            mFocus = focus;
         }
     }
 
