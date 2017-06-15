@@ -480,6 +480,8 @@ public class VideoModule implements CameraModule,
             mPreferences = new ComboPreferences(mActivity);
         }
 
+        AndroidCameraManagerImpl.setDualCameraMode(false);
+
         CameraSettings.upgradeGlobalPreferences(mPreferences.getGlobal(), mActivity);
         mCameraId = getPreferredCameraId(mPreferences);
         mPreferences.setLocalId(mActivity, mCameraId);
@@ -494,6 +496,8 @@ public class VideoModule implements CameraModule,
         if (mPreferences == null) {
             mPreferences = new ComboPreferences(mActivity);
         }
+
+        AndroidCameraManagerImpl.setDualCameraMode(false);
 
         CameraSettings.upgradeGlobalPreferences(mPreferences.getGlobal(), activity);
         mCameraId = getPreferredCameraId(mPreferences);

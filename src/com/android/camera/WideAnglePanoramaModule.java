@@ -231,6 +231,8 @@ public class WideAnglePanoramaModule
         mActivity = activity;
         mRootView = parent;
 
+        AndroidCameraManagerImpl.setDualCameraMode(false);
+
         mOrientationManager = new OrientationManager(activity);
         mCaptureState = CAPTURE_STATE_VIEWFINDER;
         mUI = new WideAnglePanoramaUI(mActivity, this, (ViewGroup) mRootView);
