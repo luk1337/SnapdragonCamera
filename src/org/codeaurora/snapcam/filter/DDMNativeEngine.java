@@ -29,7 +29,6 @@
 package org.codeaurora.snapcam.filter;
 
 import java.nio.ByteBuffer;
-import java.nio.DirectByteBuffer;
 import java.nio.ByteOrder;
 
 import android.graphics.Rect;
