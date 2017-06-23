@@ -1311,11 +1311,17 @@ public class PhotoModule
                         new SnapshotBokehProcessor.YuvImageSize(
                                 auxSize.width,auxSize.height,
                                 new int[] {auxStirde, auxStirde}, auxScanline);
-                List<Object> areas = mFocusManager.getFocusAreas();
-                if (areas != null) {
+                List<Camera.Area> areas = mParameters.getFocusAreas();
+                if (mUI.hasFaces()) {
+                    Camera.Face face = mUI.getCurrentFace();
+                    if (face != null) {
+                        Log.d(TAG,"set bokeh focus point by FD "+ face.rect.toString());
+                        priYuvSize.setFocus(face.rect);
+                    }
+                } else if (areas != null) {
                     Camera.Area current = (Camera.Area)areas.get(0);
                     if (current != null) {
-                        Log.d(TAG,"set bokeh focus point"+ current.rect.toString());
+                        Log.d(TAG,"set bokeh focus point by touch"+ current.rect.toString());
                         priYuvSize.setFocus(current.rect);
                     }
                 }
@@ -1532,6 +1538,7 @@ public class PhotoModule
                 } else {
                     if (AndroidCameraManagerImpl.isDualCameraMode()) {
                         orientation = mJpegRotation;
+                        exif.addOrientationTag(orientation);
                     }
                 }
                 if (!mIsImageCaptureIntent) {
@@ -1692,7 +1699,8 @@ public class PhotoModule
         @Override
         public void onBokenFailure(int reason) {
             Log.d(TAG,"onBokenFailure reason = " +reason);
-            Toast.makeText(mActivity,"Snapshot Bokeh failed reason="+reason,Toast.LENGTH_SHORT).show();
+            Toast.makeText(
+                    mActivity,"Snapshot Bokeh failed reason="+reason,Toast.LENGTH_SHORT).show();
         }
 
         @Override
@@ -1735,6 +1743,22 @@ public class PhotoModule
         public void onAutoFocusMoving(
                 boolean moving, CameraProxy camera) {
             mFocusManager.onAutoFocusMoving(moving);
+            if (!moving && AndroidCameraManagerImpl.isDualCameraMode() &&
+                    mCameraDevice.getAuxCamera() != null) {
+                float[] distance = new float[3];
+                mCameraDevice.refreshParameters();
+                mCameraDevice.getParameters().getFocusDistances(distance);
+                Log.d(TAG,"focus distance ="+distance[0]+","+distance[1]+","+distance[2]);
+                if (distance[1] < 0.5 || Float.isInfinite(distance[1]))  {
+                    mUI.showDistanceTip("Too Near");
+                } else if (distance[1] > 2.0){
+                    mUI.showDistanceTip("Too Far");
+                } else {
+                    mUI.showDistanceTip(null);
+                }
+            } else {
+                mUI.showDistanceTip(null);
+            }
         }
     }
 
@@ -2145,8 +2169,6 @@ public class PhotoModule
                     mCameraDevice.setParameters(mParameters);
                     mParameters = mCameraDevice.getParameters();
                 }
-                mUI.overrideSettings(CameraSettings.KEY_FACE_DETECTION,
-                        Parameters.FACE_DETECTION_OFF);
             }
             exposureCompensation =
                 Integer.toString(mParameters.getExposureCompensation());

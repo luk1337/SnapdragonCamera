@@ -44,6 +44,15 @@
             android:id="@+id/mdp_preview_content_aux"
             android:layout_width="1dp"
             android:layout_height="1dp" />
+        <TextView
+            android:id="@+id/bokeh_distance_tip"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="20sp"
+            android:visibility="gone"
+            android:textColor="@android:color/holo_red_light"
+            android:paddingTop="50dp"
+            android:layout_gravity="center_horizontal"/>
     </FrameLayout>
     <View
         android:id="@+id/preview_cover"

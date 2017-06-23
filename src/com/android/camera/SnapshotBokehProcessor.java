@@ -319,6 +319,7 @@ public class SnapshotBokehProcessor {
                 case SAVE:
                     BokehProcess bokehProcess = (BokehProcess)msg.obj;
                     byte[] bokeh = compressBitmapToJpeg(bokehProcess.getBokeh());
+                    bokeh = addExifTags(bokeh,bokehProcess.getOrientation());
                     byte[] primary = bokehProcess.getPrimaryJpeg();
                     GImage gImage = new GImage(primary,"image/jpeg");
                     GDepth depth = bokehProcess.getDepth();
