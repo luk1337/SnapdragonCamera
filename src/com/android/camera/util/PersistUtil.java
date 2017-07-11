@@ -32,10 +32,10 @@ import android.os.SystemProperties;
 
 public class PersistUtil {
 
-    private static final String PERSIST_MEMORY_LIMIT = "persist.camera.perf.memlimit";
-    private static final String PERSIST_SKIP_MEMORY_CHECK = "persist.camera.perf.skip_memck";
-    private static final String PERSIST_LONGSHOT_SHOT_LIMIT = "persist.camera.longshot.shotnum";
-    private static final String PERSIST_CAMERA_PREVIEW_SIZE = "persist.camera.preview.size";
+    private static final String PERSIST_MEMORY_LIMIT = "persist.vendor.camera.perf.memlimit";
+    private static final String PERSIST_SKIP_MEMORY_CHECK = "persist.vendor.camera.perf.skip_memck";
+    private static final String PERSIST_LONGSHOT_SHOT_LIMIT = "persist.vendor.camera.longshot.shotnum";
+    private static final String PERSIST_CAMERA_PREVIEW_SIZE = "persist.vendor.camera.preview.size";
 
     public static int getMemoryLimit() {
         return SystemProperties.getInt(PERSIST_MEMORY_LIMIT, 60);

@@ -977,7 +977,7 @@ public class CameraSettings {
             removePreference(group, cameraHdrPlus.getKey());
         }
 
-        if (SystemProperties.getBoolean("persist.env.camera.saveinsd", false)) {
+        if (SystemProperties.getBoolean("persist.vendor.env.camera.saveinsd", false)) {
             final String CAMERA_SAVEPATH_SDCARD = "1";
             final int CAMERA_SAVEPATH_SDCARD_IDX = 1;
             final int CAMERA_SAVEPATH_PHONE_IDX = 0;
