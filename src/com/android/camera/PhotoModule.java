@@ -1733,22 +1733,6 @@ public class PhotoModule
         public void onAutoFocusMoving(
                 boolean moving, CameraProxy camera) {
             mFocusManager.onAutoFocusMoving(moving);
-            if (!moving && AndroidCameraManagerImpl.isDualCameraMode() &&
-                    mCameraDevice.getAuxCamera() != null) {
-                float[] distance = new float[3];
-                mCameraDevice.refreshParameters();
-                mCameraDevice.getParameters().getFocusDistances(distance);
-                Log.d(TAG,"focus distance ="+distance[0]+","+distance[1]+","+distance[2]);
-                if (distance[1] < 0.5 || Float.isInfinite(distance[1]))  {
-                    mUI.showDistanceTip("Too Near");
-                } else if (distance[1] > 2.0){
-                    mUI.showDistanceTip("Too Far");
-                } else {
-                    mUI.showDistanceTip(null);
-                }
-            } else {
-                mUI.showDistanceTip(null);
-            }
         }
     }
 
