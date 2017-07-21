@@ -21,7 +21,6 @@ import java.util.Locale;
 
 import android.animation.Animator;
 import android.animation.Animator.AnimatorListener;
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -42,13 +41,11 @@ import android.view.ViewPropertyAnimator;
 import android.widget.ListView;
 import android.widget.Toast;
 import android.widget.TextView;
-import android.widget.GridView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.FrameLayout;
 import android.widget.FrameLayout.LayoutParams;
 
-import com.android.camera.CameraPreference.OnPreferenceChangedListener;
 import com.android.camera.TsMakeupManager.MakeupLevelListener;
 import com.android.camera.app.CameraApp;
 import com.android.camera.ui.CameraControls;
@@ -57,14 +54,14 @@ import com.android.camera.ui.ListSubMenu;
 import com.android.camera.ui.ListMenu;
 import com.android.camera.ui.ModuleSwitcher;
 import com.android.camera.ui.RotateLayout;
-import com.android.camera.ui.RotateImageView;
 import com.android.camera.ui.RotateTextToast;
 import android.widget.HorizontalScrollView;
+import org.codeaurora.snapcam.R;
+
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.Display;
 import com.android.camera.util.CameraUtil;
-import java.util.Locale;
 
 import org.codeaurora.snapcam.R;
 import org.codeaurora.snapcam.wrapper.ParametersWrapper;
@@ -1383,6 +1380,27 @@ public class PhotoMenu extends MenuController
     public void onSettingChanged(ListPreference pref) {
         // Reset the scene mode if HDR is set to on. Reset HDR if scene mode is
         // set to non-auto.
+
+        boolean needToChangeMode = false;
+        if (same(pref, CameraSettings.KEY_SCENE_MODE,
+                CameraSettings.KEY_SCENE_MODE_SNAPSHOT_BOKEH) &&
+                !AndroidCameraManagerImpl.isDualCameraMode()) {
+            AndroidCameraManagerImpl.setDualCameraMode(true);
+            needToChangeMode = true;
+        } else if (notSame(pref, CameraSettings.KEY_SCENE_MODE,
+                CameraSettings.KEY_SCENE_MODE_SNAPSHOT_BOKEH) &&
+                AndroidCameraManagerImpl.isDualCameraMode()) {
+            AndroidCameraManagerImpl.setDualCameraMode(false);
+            needToChangeMode = true;
+        }
+
+        if (needToChangeMode) {
+            mActivity.getCurrentModule().onPauseBeforeSuper();
+            mActivity.getCurrentModule().onPauseAfterSuper();
+            mActivity.getCurrentModule().onResumeBeforeSuper();
+            mActivity.getCurrentModule().onResumeAfterSuper();
+        }
+
         if (same(pref, CameraSettings.KEY_SCENE_MODE, Parameters.SCENE_MODE_HDR)) {
             ListPreference hdrPref =
                     mPreferenceGroup.findPreference(CameraSettings.KEY_CAMERA_HDR);

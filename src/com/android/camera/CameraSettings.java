@@ -181,6 +181,12 @@ public class CameraSettings {
 
     public static final String KEY_AUTO_HDR = "pref_camera_auto_hdr_key";
 
+    //for dual camera
+    public static final String KEY_QC_DUAL_CAMERA_MODE = "dual-camera-mode";
+    public static final String KEY_QC_DUAL_CAMERA_MAIN_CAMERA = "dual-camera-main-camera";
+    public static final String KEY_QC_DUAL_CAMERA_ID = "dual-camera-id";
+    public static final String KEY_SCENE_MODE_SNAPSHOT_BOKEH = "snapshotbokeh";
+
     //for flip
     public static final String KEY_QC_PREVIEW_FLIP = "preview-flip";
     public static final String KEY_QC_VIDEO_FLIP = "video-flip";
@@ -936,6 +942,10 @@ public class CameraSettings {
                         supportedAdvancedFeatures)) {
                 supportedSceneModes.add(mContext.getString(R.string
                             .pref_camera_advanced_feature_value_optizoom_on));
+            }
+            if (SystemProperties.getInt("snapcam.bokeh", 0) == 1) {
+                supportedSceneModes.add(mContext.getString(R.string
+                        .pref_camera_scenemode_entry_value_snapshotbokeh));
             }
             filterUnsupportedOptions(group, sceneMode, supportedSceneModes);
         }

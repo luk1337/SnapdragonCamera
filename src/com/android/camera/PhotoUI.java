@@ -96,6 +96,7 @@ public class PhotoUI implements PieListener,
 
     private View mRootView;
     private SurfaceHolder mSurfaceHolder;
+    private SurfaceHolder mAuxSurfaceHolder;
 
     private PopupWindow mPopup;
     private ShutterButton mShutterButton;
@@ -139,6 +140,7 @@ public class PhotoUI implements PieListener,
 
     private SurfaceTextureSizeChangedListener mSurfaceTextureSizeListener;
     private SurfaceView mSurfaceView = null;
+    private SurfaceView mAuxSurfaceView = null;
     private float mAspectRatio = 4f / 3f;
     private boolean mAspectRatioResize;
 
@@ -240,6 +242,28 @@ public class PhotoUI implements PieListener,
         // display the view
         mSurfaceView = (SurfaceView) mRootView.findViewById(R.id.mdp_preview_content);
         mSurfaceView.setVisibility(View.VISIBLE);
+        if (AndroidCameraManagerImpl.isDualCameraMode()) {
+            mAuxSurfaceView = (SurfaceView) mRootView.findViewById(R.id.mdp_preview_content_aux);
+            mAuxSurfaceView.setVisibility(View.VISIBLE);
+            mAuxSurfaceHolder = mAuxSurfaceView.getHolder();
+            mAuxSurfaceHolder.addCallback(new SurfaceHolder.Callback() {
+                @Override
+                public void surfaceCreated(SurfaceHolder holder) {
+                    mAuxSurfaceHolder = holder;
+                }
+
+                @Override
+                public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+
+                }
+
+                @Override
+                public void surfaceDestroyed(SurfaceHolder holder) {
+                    mAuxSurfaceHolder = null;
+                }
+            });
+            mAuxSurfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
+        }
         mSurfaceHolder = mSurfaceView.getHolder();
         mSurfaceHolder.addCallback(this);
         mSurfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
@@ -1128,6 +1152,11 @@ public class PhotoUI implements PieListener,
     public SurfaceHolder getSurfaceHolder() {
         return mSurfaceHolder;
     }
+
+    public SurfaceHolder getAuxSurfaceHolder() {
+        return mAuxSurfaceHolder;
+    }
+
 
     public void hideSurfaceView() {
         mSurfaceView.setVisibility(View.INVISIBLE);
