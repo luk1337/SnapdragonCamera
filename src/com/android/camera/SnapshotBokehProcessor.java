@@ -56,7 +56,6 @@ import com.android.camera.exif.ExifInterface;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.DirectByteBuffer;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.TimeZone;
@@ -102,7 +101,7 @@ public class SnapshotBokehProcessor {
         mCallback = callback;
     }
 
-    public void setJpegForTask(long captureTime,byte[] jpeg) {
+    public void setJpegForTask(final long captureTime,final byte[] jpeg) {
         mBokehHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
@@ -148,10 +147,14 @@ public class SnapshotBokehProcessor {
         mBokehHandler = new BokehProcessHandler(mBokehProcessThread.getLooper());
     }
 
-    public boolean createTask(ByteBuffer primaryYUV, ByteBuffer auxiliaryYUV, byte[] primaryParam,
-                              byte[] auxiliaryParam,NamedEntity namedEntity,
-                              YuvImageSize primary, YuvImageSize auxiliary, Location loc,
-                              int orientation) {
+    public boolean createTask(final ByteBuffer primaryYUV, final ByteBuffer auxiliaryYUV,
+                              final byte[] primaryParam,
+                              final byte[] auxiliaryParam,
+                              final NamedEntity namedEntity,
+                              final YuvImageSize primary,
+                              final YuvImageSize auxiliary,
+                              final Location loc,
+                              final int orientation) {
         if (mTask.size() >= (MAX_PROCESS_QUEUE - 1)) {
             mCallback.enableShutterLock(false);
         } else {
