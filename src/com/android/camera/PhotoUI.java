@@ -715,6 +715,12 @@ public class PhotoUI implements PieListener,
     public void initializeZoom(Camera.Parameters params) {
         if ((params == null) || !params.isZoomSupported()
                 || (mZoomRenderer == null)) return;
+        if (AndroidCameraManagerImpl.isDualCameraMode()) {
+            PhotoModule module = (PhotoModule)mActivity.getCurrentModule();
+            if (module != null && module.getCamera() != null &&
+                    module.getCamera().getAuxCamera() != null)
+                return;
+        }
         mZoomMax = params.getMaxZoom();
         mZoomRatios = params.getZoomRatios();
         // Currently we use immediate zoom for fast zooming to get better UX and

@@ -2134,6 +2134,20 @@ public class PhotoModule
                     mParameters = mCameraDevice.getParameters();
                 }
             }
+
+            if (CameraSettings.KEY_SCENE_MODE_SNAPSHOT_BOKEH.equals(mSceneMode)) {
+                disableLongShot =true;
+                if (colorEffect != null & !colorEffect.equals(defaultEffect)) {
+                    // Change the colorEffect to default(None effect) when HDR ON.
+                    colorEffect = defaultEffect;
+                    mUI.setPreference(CameraSettings.KEY_COLOR_EFFECT, colorEffect);
+                    mParameters.setColorEffect(colorEffect);
+                    mCameraDevice.setParameters(mParameters);
+                    mParameters = mCameraDevice.getParameters();
+                }
+                mUI.overrideSettings(CameraSettings.KEY_FACE_DETECTION,
+                        Parameters.FACE_DETECTION_OFF);
+            }
             exposureCompensation =
                 Integer.toString(mParameters.getExposureCompensation());
             touchAfAec = mCurrTouchAfAec;
@@ -2243,6 +2257,11 @@ public class PhotoModule
         CameraSettings settings = new CameraSettings(mActivity, mInitialParams,
                 mCameraId, CameraHolder.instance().getCameraInfo());
         mPreferenceGroup = settings.getPreferenceGroup(R.xml.camera_preferences);
+        if (AndroidCameraManagerImpl.isDualCameraMode() &&
+                mCameraId == CameraHolder.instance().getBackCameraId()) {
+            ListPreference size = mPreferenceGroup.findPreference(CameraSettings.KEY_PICTURE_SIZE);
+            CameraSettings.filterBokehSize(size);
+        }
 
         int numOfCams = Camera.getNumberOfCameras();
 
@@ -2619,7 +2638,8 @@ public class PhotoModule
             return;
         }
         Log.v(TAG, "Open camera device.");
-        if (AndroidCameraManagerImpl.isDualCameraMode()) {
+        if (AndroidCameraManagerImpl.isDualCameraMode() &&
+                mCameraId == CameraHolder.instance().getBackCameraId()) {
             CameraHolder.instance().strongRelease();
         }
         mCameraDevice = CameraUtil.openCamera(
