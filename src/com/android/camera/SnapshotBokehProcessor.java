@@ -74,8 +74,8 @@ import android.os.SystemProperties;
 public class SnapshotBokehProcessor {
     private static final String TAG = "SnapshotBokehProcessor";
 
-    private static final String PROPERTY_QUEUE = "snapcam.bokeh.queue.size";
-    private static final String PROPERTY_BOKEH_DEBUG = "snapcam.bokeh.debug";
+    private static final String PROPERTY_QUEUE = "persist.snapcam.bokeh.queue";
+    private static final String PROPERTY_BOKEH_DEBUG = "persist.snapcam.bokeh.debug";
 
     private static final int MAX_PROCESS_QUEUE = SystemProperties.getInt(PROPERTY_QUEUE,4);
     private static final Boolean DEBUG = SystemProperties.getBoolean(PROPERTY_BOKEH_DEBUG,false);
@@ -117,24 +117,31 @@ public class SnapshotBokehProcessor {
                     }
                 }
             }
-        },100);
+        },300);
 
     }
 
     public void stopBackgroundThread() {
-        mGdepthProcessThread.quitSafely();
-        mBokehProcessThread.quitSafely();
-        try {
-            mGdepthProcessThread.join();
-            mGdepthProcessThread = null;
-            mGdepthHandler = null;
-            mBokehProcessThread.join();
-            mBokehProcessThread = null;
-            mBokehHandler = null;
-            mTask.clear();
-        } catch (InterruptedException e){
-            e.printStackTrace();
-        }
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (mGdepthProcessThread != null) {
+                        mGdepthProcessThread.join();
+                        mGdepthProcessThread = null;
+                    }
+                    mGdepthHandler = null;
+                    if (mBokehProcessThread != null) {
+                        mBokehProcessThread.join();
+                        mBokehProcessThread = null;
+                    }
+                    mBokehHandler = null;
+                    mTask.clear();
+                } catch (InterruptedException e){
+                    e.printStackTrace();
+                }
+            }
+        }).start();
     }
 
     public void startBackgroundThread() {
@@ -242,6 +249,7 @@ public class SnapshotBokehProcessor {
                     GDepth depth = gdepthProcess.getGDepth();
                     BokehProcess bokehProcess = mTask.get(namedEntity).getBokehProcess();
                     if (depth != null && bokehProcess != null) {
+                        Log.d(TAG,"gdepth is generated");
                         bokehProcess.setDepth(depth);
                         mBokehHandler.obtainMessage(BokehProcessHandler.GENERATE_BOKEH,
                                 namedEntity).sendToTarget();
@@ -296,6 +304,7 @@ public class SnapshotBokehProcessor {
                                 mContext.getContentResolver(),PhotoModule.PIXEL_FORMAT_JPEG);
                     }
                     if (success && process.isReadyToSave()) {
+                        Log.d(TAG,"bokeh image is generated");
                         obtainMessage(SAVE, process).sendToTarget();
                     } else {
                          mModule.getMainActivity().runOnUiThread(new Runnable() {
@@ -313,9 +322,10 @@ public class SnapshotBokehProcessor {
                     byte[] primary = bokehProcess.getPrimaryJpeg();
                     GImage gImage = new GImage(primary,"image/jpeg");
                     GDepth depth = bokehProcess.getDepth();
+                    Log.d(TAG,"images are compressed, start to save");
                     mModule.getMainActivity().getMediaSaveService().addXmpImage(
                             bokeh, gImage, depth,
-                            bokehProcess.getNameEntity().title+"-bokeh",
+                            "bokeh_"+bokehProcess.getNameEntity().title,
                             bokehProcess.getNameEntity().date,
                             bokehProcess.getLocation(),
                             bokehProcess.getBokeh().getWidth(),
@@ -514,8 +524,12 @@ public class SnapshotBokehProcessor {
         }
 
         public void release() {
-            mPrimary.recycle();
-            mBokeh.recycle();
+            if (mPrimary != null) {
+                mPrimary.recycle();
+            }
+            if (mBokeh != null) {
+                mBokeh.recycle();
+            }
             mPriJpeg = null;
             mGDepth = null;
         }
@@ -611,7 +625,7 @@ public class SnapshotBokehProcessor {
     }
 
 
-    public static Bitmap  getBitmapFromYuv(Context context, byte[] yuv, YuvImageSize size) {
+    public static Bitmap getBitmapFromYuv(Context context, byte[] yuv, YuvImageSize size) {
         int yLength = size.getStrides()[0] * size.getHeight();
         byte[] data = new byte[yLength * 3 /2];
         System.arraycopy(yuv,0,data,0,yLength);
@@ -671,11 +685,9 @@ public class SnapshotBokehProcessor {
         return bytes;
     }
 
-    private byte[] addExifTags(byte[] jpeg, int orientationInDegree) {
+    public byte[] addExifTags(byte[] jpeg, int orientationInDegree) {
         ExifInterface exif = new ExifInterface();
         exif.addOrientationTag(orientationInDegree);
-        exif.addDateTimeStampTag(ExifInterface.TAG_DATE_TIME, System.currentTimeMillis(),
-                TimeZone.getDefault());
         ByteArrayOutputStream jpegOut = new ByteArrayOutputStream();
         try {
             exif.writeExif(jpeg, jpegOut);

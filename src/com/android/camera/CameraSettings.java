@@ -943,7 +943,7 @@ public class CameraSettings {
                 supportedSceneModes.add(mContext.getString(R.string
                             .pref_camera_advanced_feature_value_optizoom_on));
             }
-            if (SystemProperties.getInt("snapcam.bokeh", 0) == 1) {
+            if (SystemProperties.getInt("persist.snapcam.bokeh", 0) == 1) {
                 supportedSceneModes.add(mContext.getString(R.string
                         .pref_camera_scenemode_entry_value_snapshotbokeh));
             }

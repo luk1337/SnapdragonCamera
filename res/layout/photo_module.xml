@@ -43,8 +43,7 @@
         <SurfaceView
             android:id="@+id/mdp_preview_content_aux"
             android:layout_width="1dp"
-            android:layout_height="1dp"
-            android:visibility="gone"/>
+            android:layout_height="1dp" />
     </FrameLayout>
     <View
         android:id="@+id/preview_cover"
