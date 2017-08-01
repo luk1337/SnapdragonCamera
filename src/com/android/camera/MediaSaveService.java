@@ -370,7 +370,7 @@ public class MediaSaveService extends Service {
         @Override
         protected void onPreExecute() {
             // do nothing.
-            Log.d("BKPI","start XmpImageSaveTask");
+            Log.d(TAG,"start XmpImageSaveTask");
         }
 
         @Override
@@ -395,7 +395,7 @@ public class MediaSaveService extends Service {
 
         @Override
         protected void onPostExecute(Uri uri) {
-            Log.d("BKPI","XmpImageSaveTask end");
+            Log.d(TAG,"XmpImageSaveTask end");
             if (listener != null) listener.onMediaSaved(uri);
             boolean previouslyFull = isQueueFull();
             mMemoryUse -= data.length;

@@ -44,6 +44,7 @@ import android.hardware.Camera.CameraMetaDataCallback;
 import com.android.camera.util.ApiHelper;
 import android.os.ConditionVariable;
 import android.view.SurfaceView;
+import android.os.SystemProperties;
 
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
@@ -108,10 +109,13 @@ class AndroidCameraManagerImpl implements CameraManager {
     private static final int CAMERA_HAL_API_VERSION_1_0 = 0x100;
     private static final int AUXILIARY_CAMERA_ID = 2;
 
+    private static final String PROPERTY_AUXILIARY_CAMERA = "persist.snapcam.bokeh.aux";
+
     private CameraHandler mCameraHandler;
     private android.hardware.Camera mCamera;
     private android.hardware.Camera mCamera2;
-    private int mAuxiliaryCameraId = AUXILIARY_CAMERA_ID;
+    private int mAuxiliaryCameraId = SystemProperties.getInt(PROPERTY_AUXILIARY_CAMERA,
+            AUXILIARY_CAMERA_ID);
     private int mPrimaryCameraId = 0;
     private SurfaceHolder mAuxSurfaceHolder;
 
@@ -255,6 +259,7 @@ class AndroidCameraManagerImpl implements CameraManager {
                             if (sDualCameraMode && msg.arg1 == CameraHolder.instance().getBackCameraId()) {
                                 mCamera2 = (android.hardware.Camera) openMethod.invoke(
                                         null, mAuxiliaryCameraId, CAMERA_HAL_API_VERSION_1_0);
+                                Log.d(TAG,"dualcamera mode open camera2");
                             }
                         } catch (Exception e) {
                             /* Retry with open if openLegacy doesn't exist/fails */
@@ -263,6 +268,7 @@ class AndroidCameraManagerImpl implements CameraManager {
                             mCamera = android.hardware.Camera.open(msg.arg1);
                             if (sDualCameraMode && msg.arg1 == CameraHolder.instance().getBackCameraId()) {
                                 mCamera2 = android.hardware.Camera.open(mAuxiliaryCameraId);
+                                Log.d(TAG,"dualcamera mode open camera2");
                             }
                         }
 
@@ -319,6 +325,9 @@ class AndroidCameraManagerImpl implements CameraManager {
                         mReconnectIOException = null;
                         try {
                             mCamera.reconnect();
+                            if (mCamera2 != null){
+                                mCamera2.reconnect();
+                            }
                         } catch (IOException ex) {
                             mReconnectIOException = ex;
                         }
@@ -326,10 +335,16 @@ class AndroidCameraManagerImpl implements CameraManager {
 
                     case UNLOCK:
                         mCamera.unlock();
+                        if (mCamera2 != null) {
+                            mCamera2.unlock();
+                        }
                         return;
 
                     case LOCK:
                         mCamera.lock();
+                        if (mCamera2 != null) {
+                            mCamera2.unlock();
+                        }
                         return;
 
                     case SET_PREVIEW_TEXTURE_ASYNC:
@@ -340,6 +355,9 @@ class AndroidCameraManagerImpl implements CameraManager {
                         try {
                             mCamera.setPreviewDisplay((SurfaceHolder) msg.obj);
                             if (sDualCameraMode && mCamera2 != null) {
+                                if (mAuxSurfaceHolder == null) {
+                                    Log.d(TAG,"SurfaceHolder of auxiliary camera is null");
+                                }
                                 mCamera2.setPreviewDisplay(mAuxSurfaceHolder);
                             }
                         } catch (IOException e) {
@@ -1015,6 +1033,7 @@ class AndroidCameraManagerImpl implements CameraManager {
                 }
             }
             int bufferSize = width * height * 3 /2;
+            Log.d(TAG,"raw picture size="+bufferSize);
             if (bufferSize != 0) {
                 mPriYuv = ByteBuffer.allocateDirect(bufferSize);
                 mAuxYuv = ByteBuffer.allocateDirect(bufferSize);

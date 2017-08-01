@@ -943,7 +943,8 @@ public class CameraSettings {
                 supportedSceneModes.add(mContext.getString(R.string
                             .pref_camera_advanced_feature_value_optizoom_on));
             }
-            if (SystemProperties.getInt("snapcam.bokeh", 0) == 1) {
+            if (SystemProperties.getInt("persist.snapcam.bokeh", 0) == 1 &&
+                    mCameraId == CameraHolder.instance().getBackCameraId()) {
                 supportedSceneModes.add(mContext.getString(R.string
                         .pref_camera_scenemode_entry_value_snapshotbokeh));
             }
@@ -1126,6 +1127,25 @@ public class CameraSettings {
             list.add(String.format(Locale.ENGLISH, "%dx%d", size.width, size.height));
         }
         return list;
+    }
+
+    public static void filterBokehSize(ListPreference preference) {
+        if (preference != null) {
+            CharSequence[] values = preference.getEntryValues();
+            List<String> supported = new ArrayList<>();
+            for (CharSequence value : values) {
+                String size = value.toString();
+                int index = size.indexOf('x');
+                if (index == NOT_FOUND) continue;
+                float width = (float)Integer.parseInt(size.substring(0, index));
+                float height = (float)Integer.parseInt(size.substring(index + 1));
+                float ratio = width/height;
+                if (ratio < 1.34 && ratio > 1.33) {
+                    supported.add(size);
+                }
+            }
+            preference.filterUnsupported(supported);
+        }
     }
 
     public static void upgradeLocalPreferences(SharedPreferences pref) {

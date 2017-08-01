@@ -554,6 +554,16 @@ public class PhotoModule
         }
     }
 
+    public void setupDualCameraMode() {
+        boolean dualcamera = mPreferences.getString(CameraSettings.KEY_SCENE_MODE, "auto").
+                equals(mActivity.getString(
+                        R.string.pref_camera_scenemode_entry_value_snapshotbokeh));
+        AndroidCameraManagerImpl.setDualCameraMode(dualcamera);
+        if (mBokeProcessor == null) {
+            mBokeProcessor = new SnapshotBokehProcessor(this, mBokehCallback);
+        }
+    }
+
     public void reinit() {
         mPreferences = ComboPreferences.get(mActivity);
         if (mPreferences == null) {
@@ -563,6 +573,7 @@ public class PhotoModule
         mCameraId = getPreferredCameraId(mPreferences);
         mPreferences.setLocalId(mActivity, mCameraId);
         CameraSettings.upgradeLocalPreferences(mPreferences.getLocal());
+        setupDualCameraMode();
     }
 
     @Override
@@ -586,13 +597,7 @@ public class PhotoModule
         mPreferences.setLocalId(mActivity, mCameraId);
         CameraSettings.upgradeLocalPreferences(mPreferences.getLocal());
 
-        boolean dualcamera = mPreferences.getString(CameraSettings.KEY_SCENE_MODE, "auto").
-                equals(mActivity.getString(
-                        R.string.pref_camera_scenemode_entry_value_snapshotbokeh));
-        AndroidCameraManagerImpl.setDualCameraMode(dualcamera);
-        if (dualcamera) {
-            mBokeProcessor = new SnapshotBokehProcessor(this, mBokehCallback);
-        }
+        setupDualCameraMode();
 
         mUI = new PhotoUI(activity, this, parent);
 
@@ -689,7 +694,15 @@ public class PhotoModule
         } else {
             synchronized (mCameraDevice) {
                 SurfaceHolder sh = mUI.getSurfaceHolder();
-                if (sh == null) {
+                SurfaceHolder auxSh = mUI.getAuxSurfaceHolder();
+                if (AndroidCameraManagerImpl.isDualCameraMode()) {
+                    if (sh == null || auxSh == null) {
+                        Log.w(TAG, "startPreview: holder for preview are not ready.");
+                        return;
+                    } else {
+                        mCameraDevice.setAuxPreviewSurface(auxSh);
+                    }
+                } else if (sh == null) {
                     Log.w(TAG, "startPreview: holder for preview are not ready.");
                     return;
                 }
@@ -1260,6 +1273,7 @@ public class PhotoModule
             implements CameraPictureCallback {
         Location location;
 
+
         BokehPictureCallback(Location loc) {
             location = loc;
         }
@@ -1273,6 +1287,7 @@ public class PhotoModule
             mRawPictureCallbackTime = System.currentTimeMillis();
             Log.v(TAG, "mShutterToRawCallbackTime = "
                     + (mRawPictureCallbackTime - mShutterCallbackTime) + "ms");
+            Log.d(TAG,"onDualCameraPictureTaken");
             boolean success = false;
             if (mBokeProcessor != null && mPriMetaData != null
                     && mAuxMetaData != null && pri != null && aux != null) {
@@ -1296,6 +1311,14 @@ public class PhotoModule
                         new SnapshotBokehProcessor.YuvImageSize(
                                 auxSize.width,auxSize.height,
                                 new int[] {auxStirde, auxStirde}, auxScanline);
+                List<Object> areas = mFocusManager.getFocusAreas();
+                if (areas != null) {
+                    Camera.Area current = (Camera.Area)areas.get(0);
+                    if (current != null) {
+                        Log.d(TAG,"set bokeh focus point"+ current.rect.toString());
+                        priYuvSize.setFocus(current.rect);
+                    }
+                }
                 success = mBokeProcessor.createTask(pri,aux,
                         mPriMetaData,mAuxMetaData, name,priYuvSize,auxYuvSize,
                         location,mJpegRotation);
@@ -1461,9 +1484,7 @@ public class PhotoModule
                     && !mPreviewRestartSupport
                     && (mCameraState != LONGSHOT)
                     && (mSnapshotMode != CameraInfo.CAMERA_SUPPORT_MODE_ZSL)
-                    && (mReceivedSnapNum == mBurstSnapNum)
-                    && (!AndroidCameraManagerImpl.isDualCameraMode());
-
+                    && (mReceivedSnapNum == mBurstSnapNum);
             if (needRestartPreview) {
                 setupPreview();
                 if (CameraUtil.FOCUS_MODE_CONTINUOUS_PICTURE.equals(
@@ -1587,6 +1608,10 @@ public class PhotoModule
                                 mUI.setDownFactor(4);
                             }
                             if (mAnimateCapture) {
+                                if (AndroidCameraManagerImpl.isDualCameraMode() &&
+                                        mCameraDevice.getAuxCamera() != null) {
+                                    jpegData = mBokeProcessor.addExifTags(jpegData,orientation);
+                                }
                                 mUI.animateCapture(jpegData);
                             }
                         } else {
@@ -2109,6 +2134,20 @@ public class PhotoModule
                     mParameters = mCameraDevice.getParameters();
                 }
             }
+
+            if (CameraSettings.KEY_SCENE_MODE_SNAPSHOT_BOKEH.equals(mSceneMode)) {
+                disableLongShot =true;
+                if (colorEffect != null & !colorEffect.equals(defaultEffect)) {
+                    // Change the colorEffect to default(None effect) when HDR ON.
+                    colorEffect = defaultEffect;
+                    mUI.setPreference(CameraSettings.KEY_COLOR_EFFECT, colorEffect);
+                    mParameters.setColorEffect(colorEffect);
+                    mCameraDevice.setParameters(mParameters);
+                    mParameters = mCameraDevice.getParameters();
+                }
+                mUI.overrideSettings(CameraSettings.KEY_FACE_DETECTION,
+                        Parameters.FACE_DETECTION_OFF);
+            }
             exposureCompensation =
                 Integer.toString(mParameters.getExposureCompensation());
             touchAfAec = mCurrTouchAfAec;
@@ -2218,6 +2257,11 @@ public class PhotoModule
         CameraSettings settings = new CameraSettings(mActivity, mInitialParams,
                 mCameraId, CameraHolder.instance().getCameraInfo());
         mPreferenceGroup = settings.getPreferenceGroup(R.xml.camera_preferences);
+        if (AndroidCameraManagerImpl.isDualCameraMode() &&
+                mCameraId == CameraHolder.instance().getBackCameraId()) {
+            ListPreference size = mPreferenceGroup.findPreference(CameraSettings.KEY_PICTURE_SIZE);
+            CameraSettings.filterBokehSize(size);
+        }
 
         int numOfCams = Camera.getNumberOfCameras();
 
@@ -2594,6 +2638,10 @@ public class PhotoModule
             return;
         }
         Log.v(TAG, "Open camera device.");
+        if (AndroidCameraManagerImpl.isDualCameraMode() &&
+                mCameraId == CameraHolder.instance().getBackCameraId()) {
+            CameraHolder.instance().strongRelease();
+        }
         mCameraDevice = CameraUtil.openCamera(
                 mActivity, mCameraId, mHandler,
                 mActivity.getCameraOpenErrorCallback());
@@ -2755,7 +2803,7 @@ public class PhotoModule
         mUI.showPreviewCover();
         mUI.hideSurfaceView();
 
-        if (mBokeProcessor != null && AndroidCameraManagerImpl.isDualCameraMode()) {
+        if (AndroidCameraManagerImpl.isDualCameraMode() && mBokeProcessor != null) {
             mBokeProcessor.stopBackgroundThread();
         }
 
@@ -3031,7 +3079,8 @@ public class PhotoModule
             mCameraDevice.setFaceDetectionCallback(null, null);
             mCameraDevice.setErrorCallback(null);
 
-            if (mActivity.isSecureCamera() || mActivity.isForceReleaseCamera()) {
+            if (mActivity.isSecureCamera() || mActivity.isForceReleaseCamera()
+                    || AndroidCameraManagerImpl.isDualCameraMode()) {
                 // Blocks until camera is actually released.
                 CameraHolder.instance().strongRelease();
             } else {
@@ -3265,6 +3314,7 @@ public class PhotoModule
 
         if (Parameters.SCENE_MODE_AUTO.equals(mSceneMode) ||
             CameraUtil.SCENE_MODE_HDR.equals(mSceneMode) ||
+                CameraSettings.KEY_SCENE_MODE_SNAPSHOT_BOKEH.equals(mSceneMode) ||
             optizoomOn.equals(mSceneMode)) {
             // Set Touch AF/AEC parameter.
             String touchAfAec = mPreferences.getString(

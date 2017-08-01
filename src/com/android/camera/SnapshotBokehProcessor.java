@@ -30,9 +30,14 @@ package com.android.camera;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.ImageFormat;
+import android.graphics.Matrix;
+import android.graphics.Paint;
 import android.graphics.Point;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.YuvImage;
 import android.location.Location;
 import android.os.Handler;
@@ -51,13 +56,13 @@ import com.android.camera.exif.ExifInterface;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.DirectByteBuffer;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.TimeZone;
 
 import com.android.camera.PhotoModule.NamedImages.NamedEntity;
 import com.android.camera.imageprocessor.filter.ImageFilter;
+import com.android.camera.util.CameraUtil;
 
 import org.codeaurora.snapcam.filter.ClearSightNativeEngine;
 import org.codeaurora.snapcam.filter.DDMNativeEngine;
@@ -69,8 +74,8 @@ import android.os.SystemProperties;
 public class SnapshotBokehProcessor {
     private static final String TAG = "SnapshotBokehProcessor";
 
-    private static final String PROPERTY_QUEUE = "snapcam.bokeh.queue.size";
-    private static final String PROPERTY_BOKEH_DEBUG = "snapcam.bokeh.debug";
+    private static final String PROPERTY_QUEUE = "persist.snapcam.bokeh.queue";
+    private static final String PROPERTY_BOKEH_DEBUG = "persist.snapcam.bokeh.debug";
 
     private static final int MAX_PROCESS_QUEUE = SystemProperties.getInt(PROPERTY_QUEUE,4);
     private static final Boolean DEBUG = SystemProperties.getBoolean(PROPERTY_BOKEH_DEBUG,false);
@@ -96,7 +101,7 @@ public class SnapshotBokehProcessor {
         mCallback = callback;
     }
 
-    public void setJpegForTask(long captureTime,byte[] jpeg) {
+    public void setJpegForTask(final long captureTime,final byte[] jpeg) {
         mBokehHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
@@ -112,24 +117,31 @@ public class SnapshotBokehProcessor {
                     }
                 }
             }
-        },100);
+        },300);
 
     }
 
     public void stopBackgroundThread() {
-        mGdepthProcessThread.quitSafely();
-        mBokehProcessThread.quitSafely();
-        try {
-            mGdepthProcessThread.join();
-            mGdepthProcessThread = null;
-            mGdepthHandler = null;
-            mBokehProcessThread.join();
-            mBokehProcessThread = null;
-            mBokehHandler = null;
-            mTask.clear();
-        } catch (InterruptedException e){
-            e.printStackTrace();
-        }
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (mGdepthProcessThread != null) {
+                        mGdepthProcessThread.join();
+                        mGdepthProcessThread = null;
+                    }
+                    mGdepthHandler = null;
+                    if (mBokehProcessThread != null) {
+                        mBokehProcessThread.join();
+                        mBokehProcessThread = null;
+                    }
+                    mBokehHandler = null;
+                    mTask.clear();
+                } catch (InterruptedException e){
+                    e.printStackTrace();
+                }
+            }
+        }).start();
     }
 
     public void startBackgroundThread() {
@@ -142,10 +154,14 @@ public class SnapshotBokehProcessor {
         mBokehHandler = new BokehProcessHandler(mBokehProcessThread.getLooper());
     }
 
-    public boolean createTask(ByteBuffer primaryYUV, ByteBuffer auxiliaryYUV, byte[] primaryParam,
-                              byte[] auxiliaryParam,NamedEntity namedEntity,
-                              YuvImageSize primary, YuvImageSize auxiliary, Location loc,
-                              int orientation) {
+    public boolean createTask(final ByteBuffer primaryYUV, final ByteBuffer auxiliaryYUV,
+                              final byte[] primaryParam,
+                              final byte[] auxiliaryParam,
+                              final NamedEntity namedEntity,
+                              final YuvImageSize primary,
+                              final YuvImageSize auxiliary,
+                              final Location loc,
+                              final int orientation) {
         if (mTask.size() >= (MAX_PROCESS_QUEUE - 1)) {
             mCallback.enableShutterLock(false);
         } else {
@@ -153,7 +169,7 @@ public class SnapshotBokehProcessor {
         }
         ProcessTask task = new ProcessTask(namedEntity);
         GdepthProcess gdepthProcess = new GdepthProcess(namedEntity);
-        BokehProcess bokehProcess = new BokehProcess(namedEntity,loc,orientation);
+        BokehProcess bokehProcess = new BokehProcess(namedEntity,loc,orientation,primary.getFocus());
         task.setGdepthProcess(gdepthProcess);
         task.setBokehProcess(bokehProcess);
         mTask.put(namedEntity, task);
@@ -233,6 +249,7 @@ public class SnapshotBokehProcessor {
                     GDepth depth = gdepthProcess.getGDepth();
                     BokehProcess bokehProcess = mTask.get(namedEntity).getBokehProcess();
                     if (depth != null && bokehProcess != null) {
+                        Log.d(TAG,"gdepth is generated");
                         bokehProcess.setDepth(depth);
                         mBokehHandler.obtainMessage(BokehProcessHandler.GENERATE_BOKEH,
                                 namedEntity).sendToTarget();
@@ -287,6 +304,7 @@ public class SnapshotBokehProcessor {
                                 mContext.getContentResolver(),PhotoModule.PIXEL_FORMAT_JPEG);
                     }
                     if (success && process.isReadyToSave()) {
+                        Log.d(TAG,"bokeh image is generated");
                         obtainMessage(SAVE, process).sendToTarget();
                     } else {
                          mModule.getMainActivity().runOnUiThread(new Runnable() {
@@ -304,9 +322,10 @@ public class SnapshotBokehProcessor {
                     byte[] primary = bokehProcess.getPrimaryJpeg();
                     GImage gImage = new GImage(primary,"image/jpeg");
                     GDepth depth = bokehProcess.getDepth();
+                    Log.d(TAG,"images are compressed, start to save");
                     mModule.getMainActivity().getMediaSaveService().addXmpImage(
                             bokeh, gImage, depth,
-                            bokehProcess.getNameEntity().title+"-bokeh",
+                            "bokeh_"+bokehProcess.getNameEntity().title,
                             bokehProcess.getNameEntity().date,
                             bokehProcess.getLocation(),
                             bokehProcess.getBokeh().getWidth(),
@@ -404,11 +423,13 @@ public class SnapshotBokehProcessor {
         private NamedEntity mNameEntity;
         private int mOrientation;
         private Location mLoc;
+        private Rect mFocus;
 
-        public BokehProcess(NamedEntity namedEntity, Location loc,int orientation) {
+        public BokehProcess(NamedEntity namedEntity, Location loc,int orientation,Rect focus) {
             mNameEntity = namedEntity;
             mLoc = loc;
             mOrientation = orientation;
+            mFocus = focus;
         }
 
         public void setDepth(GDepth depth) {
@@ -474,20 +495,41 @@ public class SnapshotBokehProcessor {
                     height : (roiRect.bottom - roiRect.top);
             int[] roi = new int[] {
                     roiRect.left,roiRect.top,roiWidth,roiHeight};
-            if (dualCameraEffect.initialize(mPrimary, Gdepth, roi,renderwidth, renderHeight,1.0f)) {
+            if (dualCameraEffect.initialize(mPrimary, Gdepth, roi,renderwidth, renderHeight,0.0f)) {
                 mBokeh = Bitmap.createBitmap(renderwidth,renderHeight, Bitmap.Config.ARGB_8888);
-                Point center = new Point(roiRect.centerX(),roiRect.centerY());
+                Point center;
+                if (mFocus != null) {
+                    Matrix matrix = new Matrix();
+                    CameraUtil.prepareMatrix(matrix,false,0,roiRect);
+                    RectF focus = CameraUtil.rectToRectF(mFocus);
+                    matrix.mapRect(focus);
+                    center = new Point((int)focus.centerX(),(int)focus.centerY());
+                }else {
+                    center = new Point(roiRect.centerX(),roiRect.centerY());
+
+                }
                 dualCameraEffect.map(center);
                 ret = dualCameraEffect.render(
                         DualCameraEffect.REFOCUS_CIRCLE, center.x, center.y, mBokeh);
+                if (DEBUG) {
+                    Canvas canvas = new Canvas(mBokeh);
+                    Paint paint = new Paint();
+                    paint.setColor(Color.RED);
+                    paint.setStrokeWidth(5.0f);
+                    canvas.drawCircle(center.x, center.y, 30,paint);
+                }
             }
             dualCameraEffect.release();
             return ret;
         }
 
         public void release() {
-            mPrimary.recycle();
-            mBokeh.recycle();
+            if (mPrimary != null) {
+                mPrimary.recycle();
+            }
+            if (mBokeh != null) {
+                mBokeh.recycle();
+            }
             mPriJpeg = null;
             mGDepth = null;
         }
@@ -542,6 +584,7 @@ public class SnapshotBokehProcessor {
         private int mHeight;
         private int mScanline;
         private int[] mStrides;
+        private Rect mFocus;
 
         public YuvImageSize(int width, int height, int[] strides, int scanline){
             mWidth = width;
@@ -565,6 +608,12 @@ public class SnapshotBokehProcessor {
         public int getScanline() {
             return mScanline;
         }
+
+        public Rect getFocus() {return mFocus;}
+
+        public void setFocus(Rect focus) {
+            mFocus = focus;
+        }
     }
 
     public void setOtpMetaData(byte[] data){
@@ -576,7 +625,7 @@ public class SnapshotBokehProcessor {
     }
 
 
-    public static Bitmap  getBitmapFromYuv(Context context, byte[] yuv, YuvImageSize size) {
+    public static Bitmap getBitmapFromYuv(Context context, byte[] yuv, YuvImageSize size) {
         int yLength = size.getStrides()[0] * size.getHeight();
         byte[] data = new byte[yLength * 3 /2];
         System.arraycopy(yuv,0,data,0,yLength);
@@ -636,11 +685,9 @@ public class SnapshotBokehProcessor {
         return bytes;
     }
 
-    private byte[] addExifTags(byte[] jpeg, int orientationInDegree) {
+    public byte[] addExifTags(byte[] jpeg, int orientationInDegree) {
         ExifInterface exif = new ExifInterface();
         exif.addOrientationTag(orientationInDegree);
-        exif.addDateTimeStampTag(ExifInterface.TAG_DATE_TIME, System.currentTimeMillis(),
-                TimeZone.getDefault());
         ByteArrayOutputStream jpegOut = new ByteArrayOutputStream();
         try {
             exif.writeExif(jpeg, jpegOut);

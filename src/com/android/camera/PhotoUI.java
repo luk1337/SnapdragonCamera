@@ -242,28 +242,28 @@ public class PhotoUI implements PieListener,
         // display the view
         mSurfaceView = (SurfaceView) mRootView.findViewById(R.id.mdp_preview_content);
         mSurfaceView.setVisibility(View.VISIBLE);
-        if (AndroidCameraManagerImpl.isDualCameraMode()) {
-            mAuxSurfaceView = (SurfaceView) mRootView.findViewById(R.id.mdp_preview_content_aux);
-            mAuxSurfaceView.setVisibility(View.VISIBLE);
-            mAuxSurfaceHolder = mAuxSurfaceView.getHolder();
-            mAuxSurfaceHolder.addCallback(new SurfaceHolder.Callback() {
-                @Override
-                public void surfaceCreated(SurfaceHolder holder) {
-                    mAuxSurfaceHolder = holder;
-                }
 
-                @Override
-                public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+        mAuxSurfaceView = (SurfaceView) mRootView.findViewById(R.id.mdp_preview_content_aux);
+        mAuxSurfaceView.setVisibility(View.VISIBLE);
+        mAuxSurfaceHolder = mAuxSurfaceView.getHolder();
+        mAuxSurfaceHolder.addCallback(new SurfaceHolder.Callback() {
+            @Override
+            public void surfaceCreated(SurfaceHolder holder) {
+                mAuxSurfaceHolder = holder;
+                Log.d(TAG,"mAuxSurfaceHolder created");
+            }
 
-                }
+            @Override
+            public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
 
-                @Override
-                public void surfaceDestroyed(SurfaceHolder holder) {
-                    mAuxSurfaceHolder = null;
-                }
-            });
-            mAuxSurfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
-        }
+            }
+
+            @Override
+            public void surfaceDestroyed(SurfaceHolder holder) {
+                mAuxSurfaceHolder = null;
+            }
+        });
+        mAuxSurfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
         mSurfaceHolder = mSurfaceView.getHolder();
         mSurfaceHolder.addCallback(this);
         mSurfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
@@ -715,6 +715,12 @@ public class PhotoUI implements PieListener,
     public void initializeZoom(Camera.Parameters params) {
         if ((params == null) || !params.isZoomSupported()
                 || (mZoomRenderer == null)) return;
+        if (AndroidCameraManagerImpl.isDualCameraMode()) {
+            PhotoModule module = (PhotoModule)mActivity.getCurrentModule();
+            if (module != null && module.getCamera() != null &&
+                    module.getCamera().getAuxCamera() != null)
+                return;
+        }
         mZoomMax = params.getMaxZoom();
         mZoomRatios = params.getZoomRatios();
         // Currently we use immediate zoom for fast zooming to get better UX and

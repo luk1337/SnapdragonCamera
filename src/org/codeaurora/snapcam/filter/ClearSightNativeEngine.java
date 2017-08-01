@@ -485,8 +485,8 @@ public class ClearSightNativeEngine {
                     sb.append(String.format("%02X ", bytes[i]));
                 }
                 Log.d(TAG, sb.toString());
-                Log.d(TAG, "Parsed OTP DATA:\n" + data.toString());
             }
+            Log.d(TAG, "Parsed OTP DATA:\n" + data.toString());
 
             return data;
         }
