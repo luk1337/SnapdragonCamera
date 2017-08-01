@@ -232,7 +232,7 @@ public class CameraControls extends RotatableLayout {
         mMute.setEnabled(enable);
         mFrontBackSwitcher.setEnabled(enable);
         if(TsMakeupManager.HAS_TS_MAKEUP) {
-            mTsMakeupSwitcher.setEnabled(enable);
+            mTsMakeupSwitcher.setClickable(false);
         } else {
             mHdrSwitcher.setEnabled(enable);
         }

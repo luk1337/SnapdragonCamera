@@ -781,6 +781,14 @@ public class PhotoMenu extends MenuController
             mHdrSwitcher.setVisibility(View.VISIBLE);
         }
 
+        if (TsMakeupManager.HAS_TS_MAKEUP) {
+            if (mTsMakeupManager != null &&
+                    mTsMakeupSwitcher.getVisibility() == View.VISIBLE) {
+                boolean enableMakeup = !sceneMode.equals("snapshotbokeh");
+                buttonSetEnabled(mTsMakeupSwitcher,enableMakeup);
+            }
+        }
+
         if (mListener != null) {
             mListener.onSharedPreferenceChanged();
         }
