@@ -81,6 +81,7 @@ import com.android.camera.ui.RotateTextToast;
 import com.android.camera.ui.SelfieFlashView;
 import com.android.camera.ui.ZoomRenderer;
 import com.android.camera.util.CameraUtil;
+import android.os.SystemProperties;
 
 public class PhotoUI implements PieListener,
         PreviewGestures.SingleTapListener,
@@ -90,6 +91,9 @@ public class PhotoUI implements PieListener,
         CameraManager.CameraFaceDetectionCallback {
 
     private static final String TAG = "CAM_UI";
+    private static final String FILP_PREVIEW ="persist.snapcam.flip_pre";
+    private static final boolean sFlipPreview =
+            SystemProperties.getBoolean(FILP_PREVIEW,false);
     private int mDownSampleFactor = 4;
     private final AnimationManager mAnimationManager;
     private CameraActivity mActivity;
@@ -484,6 +488,13 @@ public class PhotoUI implements PieListener,
                 Log.d(TAG, "mSurfaceTextureUncroppedWidth=" + mSurfaceTextureUncroppedWidth
                         + "mSurfaceTextureUncroppedHeight=" + mSurfaceTextureUncroppedHeight);
             }
+        }
+
+        if (sFlipPreview) {
+            int tmp = lp.width;
+            lp.width = lp.height;
+            lp.height = tmp;
+            lp.gravity = Gravity.CENTER_VERTICAL;
         }
 
         mSurfaceView.setLayoutParams(lp);
