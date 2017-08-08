@@ -152,6 +152,7 @@ public class PhotoModule
     private static final int SET_PHOTO_UI_PARAMS = 11;
     private static final int SWITCH_TO_GCAM_MODULE = 12;
     private static final int ON_PREVIEW_STARTED = 13;
+    private static final int INSTANT_CAPTURE = 14;
 
     // The subset of parameters we need to update in setCameraParameters().
     private static final int UPDATE_PARAM_INITIALIZE = 1;
@@ -266,12 +267,6 @@ public class PhotoModule
     private byte[] mLastJpegData;
     private int mLastJpegOrientation = 0;
 
-    private Runnable mDoSnapRunnable = new Runnable() {
-        @Override
-        public void run() {
-            onShutterButtonClick();
-        }
-    };
 
     private class OpenCameraThread extends Thread {
         @Override
@@ -374,6 +369,7 @@ public class PhotoModule
     private int mJpegFileSizeEstimation = 0;
     private int mRemainingPhotos = -1;
     private static final int SELFIE_FLASH_DURATION = 680;
+    private Rect mBokehFocusRect;
 
     private class SelfieThread extends Thread {
         public void run() {
@@ -548,6 +544,11 @@ public class PhotoModule
 
                 case ON_PREVIEW_STARTED: {
                     onPreviewStarted();
+                    break;
+                }
+
+                case INSTANT_CAPTURE: {
+                    onShutterButtonClick();
                     break;
                 }
             }
@@ -1311,14 +1312,8 @@ public class PhotoModule
                         new SnapshotBokehProcessor.YuvImageSize(
                                 auxSize.width,auxSize.height,
                                 new int[] {auxStirde, auxStirde}, auxScanline);
-                List<Object> areas = mFocusManager.getFocusAreas();
-                if (areas != null) {
-                    Camera.Area current = (Camera.Area)areas.get(0);
-                    if (current != null) {
-                        Log.d(TAG,"set bokeh focus point"+ current.rect.toString());
-                        priYuvSize.setFocus(current.rect);
-                    }
-                }
+                priYuvSize.setFocus(mBokehFocusRect);
+                mBokehFocusRect = null;
                 success = mBokeProcessor.createTask(pri,aux,
                         mPriMetaData,mAuxMetaData, name,priYuvSize,auxYuvSize,
                         location,mJpegRotation);
@@ -1474,7 +1469,8 @@ public class PhotoModule
             Log.v(TAG, "mPictureDisplayedToJpegCallbackTime = "
                     + mPictureDisplayedToJpegCallbackTime + "ms");
 
-            if (AndroidCameraManagerImpl.isDualCameraMode() && mBokeProcessor != null) {
+            if (AndroidCameraManagerImpl.isDualCameraMode() && mCameraDevice.getAuxCamera() != null
+                    && mBokeProcessor != null) {
                 mBokeProcessor.setJpegForTask(mCaptureStartTime,jpegData);
             }
 
@@ -1532,6 +1528,7 @@ public class PhotoModule
                 } else {
                     if (AndroidCameraManagerImpl.isDualCameraMode()) {
                         orientation = mJpegRotation;
+                        exif.addOrientationTag(orientation);
                     }
                 }
                 if (!mIsImageCaptureIntent) {
@@ -1692,7 +1689,8 @@ public class PhotoModule
         @Override
         public void onBokenFailure(int reason) {
             Log.d(TAG,"onBokenFailure reason = " +reason);
-            Toast.makeText(mActivity,"Snapshot Bokeh failed reason="+reason,Toast.LENGTH_SHORT).show();
+            Toast.makeText(
+                    mActivity,"Snapshot Bokeh failed reason="+reason,Toast.LENGTH_SHORT).show();
         }
 
         @Override
@@ -1898,6 +1896,23 @@ public class PhotoModule
             mCameraDevice.enableShutterSound(false);
         } else {
             mCameraDevice.enableShutterSound(!mRefocus);
+        }
+
+        if (AndroidCameraManagerImpl.isDualCameraMode() && mCameraDevice.getAuxCamera() != null) {
+            List<Camera.Area> areas = mParameters.getFocusAreas();
+            if (mUI.hasFaces()) {
+                Camera.Face face = mUI.getCurrentFace();
+                if (face != null) {
+                    Log.d(TAG,"set bokeh focus point by FD "+ face.rect.toString());
+                    mBokehFocusRect = face.rect;
+                }
+            } else if (areas != null) {
+                Camera.Area current = (Camera.Area)areas.get(0);
+                if (current != null) {
+                    Log.d(TAG,"set bokeh focus point by touch"+ current.rect.toString());
+                    mBokehFocusRect = current.rect;
+                }
+            }
         }
 
         if (mCameraState == LONGSHOT) {
@@ -2145,8 +2160,6 @@ public class PhotoModule
                     mCameraDevice.setParameters(mParameters);
                     mParameters = mCameraDevice.getParameters();
                 }
-                mUI.overrideSettings(CameraSettings.KEY_FACE_DETECTION,
-                        Parameters.FACE_DETECTION_OFF);
             }
             exposureCompensation =
                 Integer.toString(mParameters.getExposureCompensation());
@@ -3181,7 +3194,7 @@ public class PhotoModule
             }
         } else {
             Log.v(TAG, "Trigger snapshot from start preview.");
-            mHandler.post(mDoSnapRunnable);
+            mHandler.sendEmptyMessageDelayed(INSTANT_CAPTURE, 1500);
         }
     }
 

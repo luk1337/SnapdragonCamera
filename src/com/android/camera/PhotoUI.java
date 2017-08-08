@@ -35,6 +35,7 @@ import android.graphics.drawable.AnimationDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.hardware.Camera;
 import android.hardware.Camera.Face;
+import android.hardware.camera2.CameraDevice;
 import android.os.AsyncTask;
 import android.preference.PreferenceManager;
 import android.util.Log;
@@ -55,6 +56,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.PopupWindow;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.android.camera.CameraPreference.OnPreferenceChangedListener;
@@ -79,6 +81,7 @@ import com.android.camera.ui.RotateTextToast;
 import com.android.camera.ui.SelfieFlashView;
 import com.android.camera.ui.ZoomRenderer;
 import com.android.camera.util.CameraUtil;
+import android.os.SystemProperties;
 
 public class PhotoUI implements PieListener,
         PreviewGestures.SingleTapListener,
@@ -88,6 +91,9 @@ public class PhotoUI implements PieListener,
         CameraManager.CameraFaceDetectionCallback {
 
     private static final String TAG = "CAM_UI";
+    private static final String FILP_PREVIEW ="persist.snapcam.flip_pre";
+    private static final boolean sFlipPreview =
+            SystemProperties.getBoolean(FILP_PREVIEW,false);
     private int mDownSampleFactor = 4;
     private final AnimationManager mAnimationManager;
     private CameraActivity mActivity;
@@ -161,6 +167,7 @@ public class PhotoUI implements PieListener,
 
     private int mOrientation;
     private float mScreenBrightness = 0.0f;
+    private Face mCurrentFace;
 
     public enum SURFACE_STATUS {
         HIDE,
@@ -479,6 +486,13 @@ public class PhotoUI implements PieListener,
                 Log.d(TAG, "mSurfaceTextureUncroppedWidth=" + mSurfaceTextureUncroppedWidth
                         + "mSurfaceTextureUncroppedHeight=" + mSurfaceTextureUncroppedHeight);
             }
+        }
+
+        if (sFlipPreview) {
+            int tmp = lp.width;
+            lp.width = lp.height;
+            lp.height = tmp;
+            lp.gravity = Gravity.CENTER_VERTICAL;
         }
 
         mSurfaceView.setLayoutParams(lp);
@@ -1349,6 +1363,9 @@ public class PhotoUI implements PieListener,
     @Override
     public void onFaceDetection(Face[] faces, CameraManager.CameraProxy camera) {
         mFaceView.setFaces(faces);
+        if (faces != null && faces.length > 0) {
+            mCurrentFace = faces[0];
+        }
     }
 
     @Override
@@ -1356,6 +1373,10 @@ public class PhotoUI implements PieListener,
         Log.d(TAG, "Device flip detected.");
         mCameraControls.checkLayoutFlip();
         mController.updateCameraOrientation();
+    }
+
+    public Face getCurrentFace() {
+        return mCurrentFace;
     }
 
     public void setPreference(String key, String value) {
