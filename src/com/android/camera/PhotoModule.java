@@ -369,6 +369,7 @@ public class PhotoModule
     private int mJpegFileSizeEstimation = 0;
     private int mRemainingPhotos = -1;
     private static final int SELFIE_FLASH_DURATION = 680;
+    private Rect mBokehFocusRect;
 
     private class SelfieThread extends Thread {
         public void run() {
@@ -1311,20 +1312,8 @@ public class PhotoModule
                         new SnapshotBokehProcessor.YuvImageSize(
                                 auxSize.width,auxSize.height,
                                 new int[] {auxStirde, auxStirde}, auxScanline);
-                List<Camera.Area> areas = mParameters.getFocusAreas();
-                if (mUI.hasFaces()) {
-                    Camera.Face face = mUI.getCurrentFace();
-                    if (face != null) {
-                        Log.d(TAG,"set bokeh focus point by FD "+ face.rect.toString());
-                        priYuvSize.setFocus(face.rect);
-                    }
-                } else if (areas != null) {
-                    Camera.Area current = (Camera.Area)areas.get(0);
-                    if (current != null) {
-                        Log.d(TAG,"set bokeh focus point by touch"+ current.rect.toString());
-                        priYuvSize.setFocus(current.rect);
-                    }
-                }
+                priYuvSize.setFocus(mBokehFocusRect);
+                mBokehFocusRect = null;
                 success = mBokeProcessor.createTask(pri,aux,
                         mPriMetaData,mAuxMetaData, name,priYuvSize,auxYuvSize,
                         location,mJpegRotation);
@@ -1923,6 +1912,23 @@ public class PhotoModule
             mCameraDevice.enableShutterSound(false);
         } else {
             mCameraDevice.enableShutterSound(!mRefocus);
+        }
+
+        if (AndroidCameraManagerImpl.isDualCameraMode() && mCameraDevice.getAuxCamera() != null) {
+            List<Camera.Area> areas = mParameters.getFocusAreas();
+            if (mUI.hasFaces()) {
+                Camera.Face face = mUI.getCurrentFace();
+                if (face != null) {
+                    Log.d(TAG,"set bokeh focus point by FD "+ face.rect.toString());
+                    mBokehFocusRect = face.rect;
+                }
+            } else if (areas != null) {
+                Camera.Area current = (Camera.Area)areas.get(0);
+                if (current != null) {
+                    Log.d(TAG,"set bokeh focus point by touch"+ current.rect.toString());
+                    mBokehFocusRect = current.rect;
+                }
+            }
         }
 
         if (mCameraState == LONGSHOT) {
