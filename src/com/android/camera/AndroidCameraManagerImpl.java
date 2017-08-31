@@ -109,7 +109,7 @@ class AndroidCameraManagerImpl implements CameraManager {
     private static final int CAMERA_HAL_API_VERSION_1_0 = 0x100;
     private static final int AUXILIARY_CAMERA_ID = 2;
 
-    private static final String PROPERTY_AUXILIARY_CAMERA = "persist.snapcam.bokeh.aux";
+    private static final String PROPERTY_AUXILIARY_CAMERA = "persist.vendor.snapcam.bokeh.aux";
 
     private CameraHandler mCameraHandler;
     private android.hardware.Camera mCamera;

@@ -79,8 +79,8 @@ import android.os.SystemProperties;
 public class SnapshotBokehProcessor {
     private static final String TAG = "SnapshotBokehProcessor";
 
-    private static final String PROPERTY_QUEUE = "persist.snapcam.bokeh.queue";
-    private static final String PROPERTY_BOKEH_DEBUG = "persist.snapcam.bokeh.debug";
+    private static final String PROPERTY_QUEUE = "persist.vendor.snapcam.bokeh.queue";
+    private static final String PROPERTY_BOKEH_DEBUG = "persist.vendor.snapcam.bokeh.debug";
 
     private static final int MAX_PROCESS_QUEUE = SystemProperties.getInt(PROPERTY_QUEUE,4);
     private static final Boolean DEBUG = SystemProperties.getBoolean(PROPERTY_BOKEH_DEBUG,false);
