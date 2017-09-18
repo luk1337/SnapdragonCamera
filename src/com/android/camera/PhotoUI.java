@@ -732,8 +732,15 @@ public class PhotoUI implements PieListener,
         if (AndroidCameraManagerImpl.isDualCameraMode()) {
             PhotoModule module = (PhotoModule)mActivity.getCurrentModule();
             if (module != null && module.getCamera() != null &&
-                    module.getCamera().getAuxCamera() != null)
+                    module.getCamera().getAuxCamera() != null) {
+                if (mZoomRenderer != null) {
+                    mZoomRenderer.setZoomMax(0);
+                    mZoomRenderer.setZoom(0);
+                    mZoomRenderer.setZoomValue(0);
+                    mZoomRenderer.setOnZoomChangeListener(null);
+                }
                 return;
+            }
         }
         mZoomMax = params.getMaxZoom();
         mZoomRatios = params.getZoomRatios();
