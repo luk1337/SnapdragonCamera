@@ -274,6 +274,7 @@ public class SnapshotBokehProcessor {
                         bokehProcess.setDepth(depth);
                         mBokehHandler.obtainMessage(BokehProcessHandler.GENERATE_BOKEH,
                                 namedEntity).sendToTarget();
+                        depth.encoding();
                         if (DEBUG) {
                             Bitmap depthMap = depth.getGdepthBitmap();
                             byte[] depthJpeg = compressBitmapToJpeg(depthMap);
