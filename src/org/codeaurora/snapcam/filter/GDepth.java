@@ -125,13 +125,10 @@ public class GDepth{
     }
     public static GDepth createGDepth(DepthMap depthMap){
         GDepth gDepth = new GDepth(depthMap);
-        if ( gDepth.encoding() ) {
-            return gDepth;
-        }
-        return null;
+        return gDepth;
     }
 
-    private boolean encoding(){
+    public boolean encoding(){
         Log.d(TAG, "encoding");
         boolean result = false;
         Bitmap bitmap = Bitmap.createBitmap(
