@@ -1428,7 +1428,8 @@ public class PhotoMenu extends MenuController
                 setPreference(CameraSettings.KEY_SCENE_MODE, Parameters.SCENE_MODE_AUTO);
             }
             updateSceneModeIcon((IconListPreference) scenePref);
-	} else if (same(pref, CameraSettings.KEY_CAMERA_HDR, mSettingOn)) {
+            updateFilterModeIcon(scenePref, pref);
+        } else if (same(pref, CameraSettings.KEY_CAMERA_HDR, mSettingOn)) {
             ListPreference scenePref =
                     mPreferenceGroup.findPreference(CameraSettings.KEY_SCENE_MODE);
             if (scenePref != null && notSame(scenePref, CameraSettings.KEY_SCENE_MODE, Parameters.SCENE_MODE_HDR)) {
