@@ -132,11 +132,14 @@ public class SnapshotBokehProcessor {
             @Override
             public void run() {
                 try {
+                    mGdepthHandler.sendEmptyMessage(GdepthProcessHandler.EXIT);
                     if (mGdepthProcessThread != null) {
                         mGdepthProcessThread.join();
                         mGdepthProcessThread = null;
                     }
                     mGdepthHandler = null;
+
+                    mBokehHandler.sendEmptyMessage(BokehProcessHandler.EXIT);
                     if (mBokehProcessThread != null) {
                         mBokehProcessThread.join();
                         mBokehProcessThread = null;
@@ -238,6 +241,7 @@ public class SnapshotBokehProcessor {
     }
 
     class GdepthProcessHandler extends Handler {
+        public static final int EXIT = -1;
         public static final int GENERATE_GDEPTH = 0;
 
         GdepthProcessHandler(Looper looper) {
@@ -296,13 +300,17 @@ public class SnapshotBokehProcessor {
                         mTask.get(namedEntity).release();
                     }
                     break;
+                case EXIT:
+                    getLooper().quitSafely();
+                    break;
                 default:
-                    Log.d(TAG,"ImageEncodeHandler unknown message = " + msg.what);
+                    Log.d(TAG,"GdepthProcessHandler unknown message = " + msg.what);
             }
         }
     }
 
     class BokehProcessHandler extends Handler {
+        public static final int EXIT = -1;
         public static final int GENERATE_BOKEH = 0;
         public static final int SAVE = 1;
 
@@ -388,6 +396,11 @@ public class SnapshotBokehProcessor {
                         });
                     }
                     break;
+                case EXIT:
+                    getLooper().quitSafely();
+                    break;
+                default:
+                    Log.d(TAG,"BokehProcessHandler unknown message = " + msg.what);
             }
         }
 
