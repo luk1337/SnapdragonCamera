@@ -78,6 +78,7 @@ import com.android.camera.ui.ModuleSwitcher;
 import com.android.camera.ui.RotateTextToast;
 import com.android.camera.util.ApiHelper;
 import com.android.camera.util.CameraUtil;
+import com.android.camera.util.PersistUtil;
 import com.android.camera.util.GcamHelper;
 import com.android.camera.util.UsageStatistics;
 import org.codeaurora.snapcam.R;
@@ -876,8 +877,7 @@ public class PhotoModule
     }
 
     private void resetMiscSettings() {
-        boolean disableQcomMiscSetting =
-                SystemProperties.getBoolean("camera.qcom.misc.disable", false);
+        boolean disableQcomMiscSetting = PersistUtil.isDisableQcomMiscSetting();
         if (disableQcomMiscSetting) {
             mUI.setPreference(CameraSettings.KEY_ZSL, ParametersWrapper.ZSL_OFF);
             mUI.setPreference(CameraSettings.KEY_FACE_DETECTION,
@@ -3913,9 +3913,9 @@ public class PhotoModule
         //value: 1 - FLIP_MODE_H
         //value: 2 - FLIP_MODE_V
         //value: 3 - FLIP_MODE_VH
-        int preview_flip_value = SystemProperties.getInt("debug.camera.preview.flip", 0);
-        int video_flip_value = SystemProperties.getInt("debug.camera.video.flip", 0);
-        int picture_flip_value = SystemProperties.getInt("debug.camera.picture.flip", 0);
+        int preview_flip_value = PersistUtil.getPreviewFlip();
+        int video_flip_value = PersistUtil.getVideoFlip();
+        int picture_flip_value = PersistUtil.getPictureFlip();
         int rotation = CameraUtil.getJpegRotation(mCameraId, mOrientation);
         if (AndroidCameraManagerImpl.isDualCameraMode() &&
                 mCameraId == CameraHolder.instance().getBackCameraId()) {
