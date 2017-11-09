@@ -111,6 +111,17 @@
     </string-array>
 
 
+    <string-array name="pref_camera2_bokeh_entries" translatable="true">
+        <item>@string/pref_camera2_bokeh_entry_off</item>
+        <item>@string/pref_camera2_bokeh_entry_on</item>
+    </string-array>
+
+    <string-array name="pref_camera2_bokeh_entryvalues" translatable="false">
+        <item>@string/pref_camera2_bokeh_value_off</item>
+        <item>@string/pref_camera2_bokeh_value_on</item>
+    </string-array>
+
+
     <!-- Refer to CONTROL_SCENE_MODE of Camera2 API for values
         -1 refers to ones not supported in Camera2 API
         0 is special case added for auto (meaning off)
@@ -161,6 +172,7 @@
         <item>@drawable/ic_scene_mode_auto</item>
         <item>@drawable/ic_scene_mode_hdr</item>
         <item>@drawable/ic_scene_mode_hdr</item>
+        <item>@drawable/ic_scene_mode_bokeh</item>
         <item>@drawable/ic_scene_mode_refocus</item>
         <item>@drawable/ic_scene_mode_optizoom</item>
         <item>@drawable/ic_scene_mode_portrait</item>

@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2017, The Linux Foundation. All rights reserved.
- *
  * Redistribution and use in source and binary forms, with or without
+ *
  * modification, are permitted provided that the following conditions are
  * met:
  *  * Redistributions of source code must retain the above copyright
@@ -33,6 +33,7 @@ import java.nio.ByteOrder;
 
 import android.graphics.Rect;
 
+import android.media.Image;
 import android.util.Log;
 
 import android.hardware.camera2.CaptureResult;
@@ -81,6 +82,9 @@ public class DDMNativeEngine {
     private static final int Y_PLANE = 0;
     private static final int VU_PLANE = 2;
 
+    private Image mBayerImage;
+    private Image mMonoImage;
+
     public boolean getDepthMapSize(int[] depthMap){
         return nativeGetDepthMapSize(mPrimaryWidth, mPrimaryHeight, depthMap);
     }
@@ -101,6 +105,9 @@ public class DDMNativeEngine {
 
     public void release() {
         reset();
+        if (mMonoImage != null) {
+            mMonoImage.close();
+        }
         mPrimaryY = null;
         mPrimaryUV = null;
         mAuxiliaryY = null;
@@ -108,8 +115,8 @@ public class DDMNativeEngine {
     }
 
     public boolean isReadyForGenerateDepth(){
-        return (mPrimaryY != null && mPrimaryUV != null) && 
-                (mAuxiliaryY != null && mAuxiliaryUV != null) && 
+        return ((mPrimaryY != null && mPrimaryUV != null) || mBayerImage != null) &&
+                ((mAuxiliaryY != null && mAuxiliaryUV != null) || mMonoImage != null) &&
                 mPrimaryCamInfo != null && mAuxiliaryCamInfo != null &&
                 mCamSystemCalibrationData != null;
     }
@@ -124,10 +131,6 @@ public class DDMNativeEngine {
         mPrimaryUV = (ByteBuffer)yuv.slice().position(mPrimaryStrideY *  size.getScanline());
     }
 
-    public void setBayerLensFocusDistance(float lensFocusDistance) {
-        mLensFocusDistance = lensFocusDistance;
-    }
-
     public void setAuxiliaryImage(ByteBuffer yuv, SnapshotBokehProcessor.YuvImageSize size) {
         mAuxiliaryWidth = size.getWidth();
         mAuxiliaryHeight = size.getHeight();
@@ -137,24 +140,97 @@ public class DDMNativeEngine {
         mAuxiliaryUV = (ByteBuffer)yuv.slice().position(mAuxiliaryStrideY * size.getScanline());
     }
 
+    public void setBayerLensFocusDistance(float lensFocusDistance) {
+        mLensFocusDistance = lensFocusDistance;
+    }
 
-
-    public void setBayerReprocessResult(byte[] parameters){
-        mPrimaryCamInfo = CamReprocessInfo.createCamReprocessFromBytes(parameters);
+    public void setBayerReprocessResult(byte[] parameters, boolean isCamera2){
+        mPrimaryCamInfo = CamReprocessInfo.createCamReprocessFromBytes(parameters,isCamera2);
         Log.d(TAG,mPrimaryCamInfo.toString());
+    }
+
+    public void setMonoReprocessResult(byte[] parameters, boolean isCamera2) {
+        mAuxiliaryCamInfo = CamReprocessInfo.createCamReprocessFromBytes(parameters,isCamera2);
+        Log.d(TAG,mAuxiliaryCamInfo.toString());
     }
 
     public String getBayerScaleCrop() {
         return mPrimaryCamInfo.toString();
     }
 
-    public void setMonoReprocessResult(byte[] parameters) {
-        mAuxiliaryCamInfo = CamReprocessInfo.createCamReprocessFromBytes(parameters);
-        Log.d(TAG,mAuxiliaryCamInfo.toString());
+    public String getMonoScaleCrop() {return mAuxiliaryCamInfo.toString(); }
+
+    public void setBayerImage(Image image){
+        mBayerImage = image;
+        mPrimaryWidth = mBayerImage.getWidth();
+        mPrimaryHeight = mBayerImage.getHeight();
     }
 
-    public String getMonoScaleCrop(){
-        return mAuxiliaryCamInfo.toString();
+    public void setMonoImage(Image image) {
+        mMonoImage = image;
+        mAuxiliaryWidth = mMonoImage.getWidth();
+        mAuxiliaryHeight = mMonoImage.getHeight();
+    }
+
+    public boolean dualCameraGenerateDDMbyIMage(byte[] depthMapBuffer, int depthMapStride, Rect roiRect) {
+        if ( mLensFocusDistance == 0 ){
+            Log.e(TAG, " dualCameraGenerateDDM error: mLensFocusDistance is 0");
+            return false;
+        }
+
+        if (mBayerImage == null || mMonoImage == null ) {
+            Log.e(TAG, "mBayerImage=" +(mBayerImage == null)+ " mMonoImage=" + (mMonoImage == null));
+            return false;
+        }
+
+        if ( depthMapBuffer == null ) {
+            Log.e(TAG, "depthMapBuffer can't be null");
+            return false;
+        }
+
+        if ( mAuxiliaryCamInfo== null
+                || mPrimaryCamInfo == null
+                || mCamSystemCalibrationData == null ) {
+            Log.e(TAG, "mMonoCamReprocessInfo== null:" +(mAuxiliaryCamInfo== null)
+                    + " mBayerCamReprocessInfo == null:" +(mPrimaryCamInfo == null)
+                    + " mCamSystemCalibrationData == null:" +(mCamSystemCalibrationData == null));
+            return false;
+        }
+
+        Image.Plane[] bayerPlanes = mBayerImage.getPlanes();
+        Image.Plane[] monoPlanes = mMonoImage.getPlanes();
+        int[] goodRoi = new int[4];
+        boolean result =  nativeDualCameraGenerateDDM(
+                bayerPlanes[Y_PLANE].getBuffer(),
+                bayerPlanes[VU_PLANE].getBuffer(),
+                mBayerImage.getWidth(),
+                mBayerImage.getHeight(),
+                bayerPlanes[Y_PLANE].getRowStride(),
+                bayerPlanes[VU_PLANE].getRowStride(),
+
+                monoPlanes[Y_PLANE].getBuffer(),
+                monoPlanes[VU_PLANE].getBuffer(),
+                mMonoImage.getWidth(),
+                mMonoImage.getHeight(),
+                monoPlanes[Y_PLANE].getRowStride(),
+                monoPlanes[VU_PLANE].getRowStride(),
+
+                depthMapBuffer,
+                depthMapStride,
+
+                goodRoi,
+
+                mPrimaryCamInfo.toString(),
+                mAuxiliaryCamInfo.toString(),
+                mCamSystemCalibrationData.toString(),
+                mLensFocusDistance,
+                true);
+        roiRect.left = goodRoi[0];
+        roiRect.top = goodRoi[1];
+        roiRect.right  = goodRoi[0] + goodRoi[2];
+        roiRect.bottom = goodRoi[1] + goodRoi[3];
+
+        return result;
     }
 
     public boolean dualCameraGenerateDDM(byte[] depthMapBuffer, int depthMapStride, Rect roiRect) {
@@ -166,7 +242,7 @@ public class DDMNativeEngine {
         if (mPrimaryY == null || mPrimaryUV == null || 
                 mAuxiliaryY == null || mAuxiliaryUV == null) {
             Log.e(TAG, "PrimaryYUV or AuxiliaryYUV is null");
-            return false;
+            return dualCameraGenerateDDMbyIMage(depthMapBuffer,depthMapStride,roiRect);
         }
 
         if ( depthMapBuffer == null ) {
@@ -264,10 +340,10 @@ public class DDMNativeEngine {
        public static CamStreamCropInfo createFromBytes(byte[] bytes) {
            ByteBuffer buffer = ByteBuffer.wrap(bytes);
            buffer.order(ByteOrder.LITTLE_ENDIAN);
-            return createFromByteBuffer(buffer);
+            return createFromByteBufferFloat(buffer);
        }
 
-       public static CamStreamCropInfo createFromByteBuffer(ByteBuffer buffer) {
+       public static CamStreamCropInfo createFromByteBufferFloat(ByteBuffer buffer) {
            CamStreamCropInfo camStreamCropInfo = new CamStreamCropInfo();
            Rect crop = new Rect();
            crop.left = (int)buffer.getFloat();
@@ -285,22 +361,51 @@ public class DDMNativeEngine {
 
            return camStreamCropInfo;
        }
+
+       public static CamStreamCropInfo createFromByteBufferInt(ByteBuffer buffer) {
+           CamStreamCropInfo camStreamCropInfo = new CamStreamCropInfo();
+           camStreamCropInfo.stream_id = buffer.getInt();
+           Rect crop = new Rect();
+           crop.left = buffer.getInt();
+           crop.top = buffer.getInt();
+           crop.right = crop.left + buffer.getInt();
+           crop.bottom = crop.top + buffer.getInt();
+           camStreamCropInfo.crop = crop;
+
+           Rect roi_map = new Rect();
+           roi_map.left = buffer.getInt();
+           roi_map.top = buffer.getInt();
+           roi_map.right = roi_map.left + buffer.getInt();
+           roi_map.bottom = roi_map.top + buffer.getInt();
+           camStreamCropInfo.roi_map = roi_map;
+
+           return camStreamCropInfo;
+       }
     }
 
     public static class CamRotationInfo {
         int jpeg_rotation;
         int device_rotation;
+        int stream_id;
         private CamRotationInfo(){}
 
         public static CamRotationInfo createCamReprocessFromBytes(byte[] bytes) {
             ByteBuffer buf = ByteBuffer.wrap(bytes);
             buf.order(ByteOrder.LITTLE_ENDIAN);
-            return createFromByteBuffer(buf);
+            return createFromByteBufferInt(buf);
         }
-        public static CamRotationInfo createFromByteBuffer(ByteBuffer buffer) {
+        public static CamRotationInfo createFromByteBufferFloat(ByteBuffer buffer) {
             CamRotationInfo rotation_info = new CamRotationInfo();
             rotation_info.jpeg_rotation = (int)buffer.getFloat();
             rotation_info.device_rotation = (int)buffer.getFloat();
+            return rotation_info;
+        }
+
+        public static CamRotationInfo createFromByteBufferInt(ByteBuffer buffer) {
+            CamRotationInfo rotation_info = new CamRotationInfo();
+            rotation_info.jpeg_rotation = buffer.getInt();
+            rotation_info.device_rotation = buffer.getInt();
+            rotation_info.stream_id = buffer.getInt();
             return rotation_info;
         }
     }
@@ -351,12 +456,16 @@ public class DDMNativeEngine {
                 "Current pipeline rotation setting = %d\n"
         };
 
-        public static CamReprocessInfo createCamReprocessFromBytes(byte[] bytes){
+        public static CamReprocessInfo createCamReprocessFromBytes(byte[] bytes,boolean isCamera2){
             ByteBuffer buf = ByteBuffer.wrap(bytes);
             buf.order(ByteOrder.LITTLE_ENDIAN);
-            return createCamReprocessFromBytes(buf);
+            if (isCamera2) {
+                 return createCamReprocessFromBytesInCamera2(buf);
+            }
+            return createCamReprocessFromBytesInCamera1(buf);
         }
-        public static CamReprocessInfo createCamReprocessFromBytes(ByteBuffer buffer){
+
+        public static CamReprocessInfo createCamReprocessFromBytesInCamera1(ByteBuffer buffer){
             CamReprocessInfo scaleCropRotation = new CamReprocessInfo();
             buffer.getFloat(); //skip the flag
             float len = buffer.getFloat();//skip len
@@ -364,14 +473,27 @@ public class DDMNativeEngine {
             float stride = buffer.getFloat(); //skip stride
             float scanline = buffer.getFloat();//skip scanline
             scaleCropRotation.af_focal_length_ratio = buffer.getFloat();
-            scaleCropRotation.sensor_crop_info = CamStreamCropInfo.createFromByteBuffer(buffer);
-            scaleCropRotation.camif_crop_info = CamStreamCropInfo.createFromByteBuffer(buffer);
-            scaleCropRotation.isp_crop_info = CamStreamCropInfo.createFromByteBuffer(buffer);
-            scaleCropRotation.cpp_crop_info = CamStreamCropInfo.createFromByteBuffer(buffer);
+            scaleCropRotation.sensor_crop_info = CamStreamCropInfo.createFromByteBufferFloat(buffer);
+            scaleCropRotation.camif_crop_info = CamStreamCropInfo.createFromByteBufferFloat(buffer);
+            scaleCropRotation.isp_crop_info = CamStreamCropInfo.createFromByteBufferFloat(buffer);
+            scaleCropRotation.cpp_crop_info = CamStreamCropInfo.createFromByteBufferFloat(buffer);
             scaleCropRotation.pipeline_flip = (int)buffer.getFloat();
-            scaleCropRotation.rotation_info = CamRotationInfo.createFromByteBuffer(buffer);
+            scaleCropRotation.rotation_info = CamRotationInfo.createFromByteBufferFloat(buffer);
             return scaleCropRotation;
         }
+
+        public static CamReprocessInfo createCamReprocessFromBytesInCamera2(ByteBuffer buffer){
+            CamReprocessInfo  scaleCropRotation = new CamReprocessInfo();
+            scaleCropRotation.sensor_crop_info = CamStreamCropInfo.createFromByteBufferInt(buffer);
+            scaleCropRotation.camif_crop_info = CamStreamCropInfo.createFromByteBufferInt(buffer);
+            scaleCropRotation.isp_crop_info = CamStreamCropInfo.createFromByteBufferInt(buffer);
+            scaleCropRotation.cpp_crop_info = CamStreamCropInfo.createFromByteBufferInt(buffer);
+            scaleCropRotation.af_focal_length_ratio = buffer.getFloat();
+            scaleCropRotation.pipeline_flip = buffer.getInt();
+            scaleCropRotation.rotation_info = CamRotationInfo.createFromByteBufferInt(buffer);
+            return scaleCropRotation;
+        }
+
 
         @Override
         public String toString() {

@@ -108,6 +108,7 @@ import java.util.concurrent.TimeUnit;
 
 public class CaptureModule implements CameraModule, PhotoController,
         MediaSaveService.Listener, ClearSightImageProcessor.Callback,
+        SnapshotBokehProcessor.BokehCallback,
         SettingsManager.Listener, LocationManager.Listener,
         CountDownView.OnCountDownFinishedListener {
     public static final int DUAL_MODE = 0;
@@ -129,13 +130,13 @@ public class CaptureModule implements CameraModule, PhotoController,
      */
     private static final int STATE_PREVIEW = 0;
     /**
-     * Camera state: Waiting for the focus to be locked.
-     */
-    private static final int STATE_WAITING_AF_LOCK = 1;
-    /**
      * Camera state: Waiting for the exposure to be precapture state.
      */
     private static final int STATE_WAITING_PRECAPTURE = 2;
+    /**
+     * Camera state: Waiting for the focus to be locked.
+     */
+    private static final int STATE_WAITING_AF_LOCK = 1;
     /**
      * Camera state: Waiting for the exposure state to be locked.
      */
@@ -287,6 +288,7 @@ public class CaptureModule implements CameraModule, PhotoController,
     private static final int SELFIE_FLASH_DURATION = 680;
 
     private MediaActionSound mSound;
+    private SnapshotBokehProcessor mBokehProcessor;
 
     private class SelfieThread extends Thread {
         public void run() {
@@ -672,6 +674,12 @@ public class CaptureModule implements CameraModule, PhotoController,
         return isBackCamera() && getCameraMode() == DUAL_MODE && value.equals("on");
     }
 
+    public boolean isBokehOn() {
+        String value = mSettingsManager.getValue(SettingsManager.KEY_BOKEH);
+        if (value == null) return false;
+        return isBackCamera() && getCameraMode() == DUAL_MODE && value.equals("on");
+    }
+
     private boolean isMpoOn() {
         String value = mSettingsManager.getValue(SettingsManager.KEY_MPO);
         if (value == null) return false;
@@ -823,6 +831,8 @@ public class CaptureModule implements CameraModule, PhotoController,
                                 }
                                 if (isClearSightOn()) {
                                     ClearSightImageProcessor.getInstance().onCaptureSessionConfigured(id == BAYER_ID, cameraCaptureSession);
+                                } else if (isBokehOn()) {
+                                    mBokehProcessor.onCaptureSessionConfigured(id == BAYER_ID, cameraCaptureSession);
                                 }
                             } catch (CameraAccessException e) {
                                 e.printStackTrace();
@@ -862,6 +872,11 @@ public class CaptureModule implements CameraModule, PhotoController,
                 list.add(surface);
                 ClearSightImageProcessor.getInstance().createCaptureSession(
                         id == BAYER_ID, mCameraDevice[id], list, captureSessionCallback);
+            } else if (isBokehOn()) {
+                mPreviewRequestBuilder[id].addTarget(surface);
+                list.add(surface);
+                mBokehProcessor.createCaptureSession(id == BAYER_ID, mCameraDevice[id], list,
+                        captureSessionCallback);
             } else if (id == getMainCameraId()) {
                 if(mFrameProcessor.isFrameFilterEnabled()) {
                     mActivity.runOnUiThread(new Runnable() {
@@ -1122,6 +1137,8 @@ public class CaptureModule implements CameraModule, PhotoController,
 
             if(csEnabled) {
                 captureBuilder = ClearSightImageProcessor.getInstance().createCaptureRequest(mCameraDevice[id]);
+            } else if (isBokehOn()) {
+                captureBuilder = mBokehProcessor.createCaptureRequest(mCameraDevice[id]);
             } else {
                 // No Clearsight
                 captureBuilder = mCameraDevice[id].createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
@@ -1152,7 +1169,16 @@ public class CaptureModule implements CameraModule, PhotoController,
             if(csEnabled) {
                 ClearSightImageProcessor.getInstance().capture(
                         id==BAYER_ID, mCaptureSession[id], captureBuilder, mCaptureCallbackHandler);
-            } else if(id == getMainCameraId() && mPostProcessor.isFilterOn()) {
+            } else if (isBokehOn()) {
+                if (mAFRegions[BAYER_ID] != null && mAFRegions[BAYER_ID][0] != null)  {
+                    MeteringRectangle focus = mAFRegions[BAYER_ID][0];
+                    if (focus != null) {
+                        mBokehProcessor.setBokehFocus(focus.getRect());
+                    }
+                }
+                mBokehProcessor.capture(id==BAYER_ID, mCaptureSession[id], captureBuilder,
+                        mCaptureCallbackHandler);
+            }else if(id == getMainCameraId() && mPostProcessor.isFilterOn()) {
                 mCaptureSession[id].stopRepeating();
                 captureBuilder.addTarget(mImageReader[id].getSurface());
                 if(mPostProcessor.isManualMode()) {
@@ -1357,7 +1383,16 @@ public class CaptureModule implements CameraModule, PhotoController,
                                 mPictureSize.getHeight(), mActivity, mOnMediaSavedListener);
                         ClearSightImageProcessor.getInstance().setCallback(this);
                     }
-                } else {
+                } else if (isBokehOn()){
+                    if ( i == getMainCameraId()) {
+                        if (mBokehProcessor == null) {
+                            mBokehProcessor = new SnapshotBokehProcessor(mActivity,this);
+                        }
+                        mBokehProcessor.init(map,mPictureSize.getWidth(),
+                                mPictureSize.getHeight());
+                        mBokehProcessor.startBackgroundThread();
+                    }
+                } else{
                     // No Clearsight
                     mImageReader[i] = ImageReader.newInstance(mPictureSize.getWidth(),
                             mPictureSize.getHeight(), imageFormat, PostProcessor.MAX_REQUIRED_IMAGE_NUM);
@@ -1738,6 +1773,9 @@ public class CaptureModule implements CameraModule, PhotoController,
         if (mLocationManager != null) mLocationManager.recordLocation(false);
         if(isClearSightOn()) {
             ClearSightImageProcessor.getInstance().close();
+        }
+        if(isBokehOn() && mBokehProcessor != null) {
+            mBokehProcessor.stopBackgroundThread();
         }
         closeCamera();
         mUI.showPreviewCover();
@@ -3301,6 +3339,7 @@ public class CaptureModule implements CameraModule, PhotoController,
                 case SettingsManager.KEY_CAMERA_ID:
                 case SettingsManager.KEY_MONO_ONLY:
                 case SettingsManager.KEY_CLEARSIGHT:
+                case SettingsManager.KEY_BOKEH:
                 case SettingsManager.KEY_MONO_PREVIEW:
                     if (count == 0) restart();
                     return;
@@ -3576,6 +3615,43 @@ public class CaptureModule implements CameraModule, PhotoController,
 
         unlockFocus(BAYER_ID);
         unlockFocus(MONO_ID);
+    }
+
+    @Override
+    public void onBokehSuccess() {
+        Log.d(TAG,"onBokehSuccess");
+        mActivity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(mActivity,"Snapshot Bokeh succeed",Toast.LENGTH_SHORT).show();
+            }
+        });
+        Toast.makeText(mActivity,"Snapshot Bokeh succeed",Toast.LENGTH_SHORT).show();
+    }
+
+    @Override
+    public void onBokenFailure(int reason) {
+        Log.d(TAG,"onBokenFailure reason = " +reason);
+        mActivity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(
+                        mActivity,"Snapshot Bokeh failed reason="+reason,Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        unlockFocus(BAYER_ID);
+        unlockFocus(MONO_ID);
+    }
+
+    @Override
+    public void enableShutterLock(boolean enable) {
+        if (enable) {
+            unlockFocus(BAYER_ID);
+            unlockFocus(MONO_ID);
+        } else {
+
+        }
     }
 
     /**
