@@ -129,6 +129,7 @@ public class CaptureUI implements FocusOverlayManager.FocusUI,
             SettingsManager.KEY_CLEARSIGHT,
             SettingsManager.KEY_MONO_PREVIEW,
             SettingsManager.KEY_MPO,
+            SettingsManager.KEY_BOKEH,
             SettingsManager.KEY_NOISE_REDUCTION,
             SettingsManager.KEY_DIS,
             SettingsManager.KEY_VIDEO_ENCODER,
@@ -162,11 +163,13 @@ public class CaptureUI implements FocusOverlayManager.FocusUI,
     private Point mDisplaySize = new Point();
     private SelfieFlashView mSelfieView;
     private float mScreenBrightness = 0.0f;
+    private boolean mMonoSurfaceCreate = false;
 
     private SurfaceHolder.Callback callbackMono = new SurfaceHolder.Callback() {
         // SurfaceHolder callbacks
         @Override
         public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+            mMonoSurfaceCreate = true;
             mSurfaceHolderMono = holder;
             if(mMonoDummyOutputAllocation != null) {
                 mMonoDummyOutputAllocation.setSurface(mSurfaceHolderMono.getSurface());
@@ -174,6 +177,11 @@ public class CaptureUI implements FocusOverlayManager.FocusUI,
         }
         @Override
         public void surfaceCreated(SurfaceHolder holder) {
+            mMonoSurfaceCreate = true;
+            mSurfaceHolderMono = holder;
+            if(mMonoDummyOutputAllocation != null) {
+                mMonoDummyOutputAllocation.setSurface(mSurfaceHolderMono.getSurface());
+            }
         }
         @Override
         public void surfaceDestroyed(SurfaceHolder holder) {
@@ -410,6 +418,7 @@ public class CaptureUI implements FocusOverlayManager.FocusUI,
             if (mSettingsManager != null && mSettingsManager.getValue(SettingsManager.KEY_MONO_PREVIEW) != null
                     && mSettingsManager.getValue(SettingsManager.KEY_MONO_PREVIEW).equalsIgnoreCase("on")) {
                 mSurfaceViewMono.setVisibility(View.VISIBLE);
+                mSurfaceViewMono.setZOrderMediaOverlay(true);
             } else {
                 mSurfaceViewMono.setVisibility(View.GONE);
             }
@@ -1362,7 +1371,9 @@ public class CaptureUI implements FocusOverlayManager.FocusUI,
                 rgbTypeBuilder.setX(mPreviewWidth);
                 rgbTypeBuilder.setY(mPreviewHeight);
                 mMonoDummyOutputAllocation = Allocation.createTyped(rs, rgbTypeBuilder.create(), Allocation.USAGE_SCRIPT | Allocation.USAGE_IO_OUTPUT);
-                mMonoDummyOutputAllocation.setSurface(mSurfaceHolderMono.getSurface());
+                if (mMonoSurfaceCreate) {
+                    mMonoDummyOutputAllocation.setSurface(mSurfaceHolderMono.getSurface());
+                }
                 mActivity.runOnUiThread(new Runnable() {
                     public void run() {
                         mSurfaceHolderMono.setFixedSize(mPreviewWidth, mPreviewHeight);

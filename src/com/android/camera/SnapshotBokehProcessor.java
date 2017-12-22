@@ -39,11 +39,18 @@ import android.graphics.Point;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.YuvImage;
+import android.hardware.camera2.*;
+import android.hardware.camera2.params.Face;
+import android.hardware.camera2.params.InputConfiguration;
+import android.hardware.camera2.params.StreamConfigurationMap;
 import android.location.Location;
+import android.media.Image;
+import android.media.ImageReader;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Message;
+import android.provider.ContactsContract;
 import android.renderscript.Allocation;
 import android.renderscript.Element;
 import android.renderscript.RenderScript;
@@ -61,8 +68,10 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Writer;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.TimeZone;
 
 import com.android.camera.PhotoModule.NamedImages.NamedEntity;
@@ -75,12 +84,22 @@ import org.codeaurora.snapcam.filter.DualCameraEffect;
 import org.codeaurora.snapcam.filter.GDepth;
 import org.codeaurora.snapcam.filter.GImage;
 import android.os.SystemProperties;
+import android.util.Size;
+import android.view.Surface;
 
 public class SnapshotBokehProcessor {
     private static final String TAG = "SnapshotBokehProcessor";
 
     private static final String PROPERTY_QUEUE = "persist.vendor.snapcam.bokeh.queue";
     private static final String PROPERTY_BOKEH_DEBUG = "persist.vendor.snapcam.bokeh.debug";
+
+    private static CameraCharacteristics.Key<byte[]> OTP_CALIB_BLOB =
+            new CameraCharacteristics.Key<>(
+                    "org.codeaurora.qcamera3.dualcam_calib_meta_data.dualcam_calib_meta_data_blob",
+                    byte[].class);
+    private CaptureResult.Key<byte[]> SCALE_CROP_ROTATION_REPROCESS_BLOB =
+            new CaptureResult.Key<byte[]>(
+                    "org.codeaurora.qcamera3.hal_private_data.reprocess_data_blob",byte[].class);
 
     private static final int MAX_PROCESS_QUEUE = SystemProperties.getInt(PROPERTY_QUEUE,4);
     private static final Boolean DEBUG = SystemProperties.getBoolean(PROPERTY_BOKEH_DEBUG,false);
@@ -93,16 +112,33 @@ public class SnapshotBokehProcessor {
     private HandlerThread mGdepthProcessThread;
     private BokehProcessHandler mBokehHandler;
     private GdepthProcessHandler mGdepthHandler;
-    private PhotoModule mModule;
+    private CameraActivity mActivity;
     private BokehCallback mCallback;
     private HashMap<NamedEntity, ProcessTask> mTask = new HashMap<>(MAX_PROCESS_QUEUE);
     private ClearSightNativeEngine.CamSystemCalibrationData mOtpMetaData;
 
+    //for UDCF-Lite
+    private static final int CAM_TYPE_BAYER = 0;
+    private static final int CAM_TYPE_MONO = 1;
+    private static final int NUM_CAM = 2;
+    private ImageReader[] mImageReader = new ImageReader[NUM_CAM];
+    private ImageReader[] mJpegReader = new ImageReader[NUM_CAM];
+    private CameraCaptureSession[] mCaptureSessions = new CameraCaptureSession[NUM_CAM];
+    private boolean mIsClosing;
+    private HandlerThread mImageThread;
+    private ImageProcessHandler mImageHandler;
+
 
     public SnapshotBokehProcessor(PhotoModule module,
                                   BokehCallback callback) {
-        mModule = module;
+        mActivity = module.getMainActivity();
         mContext = module.getMainActivity().getApplicationContext();
+        mCallback = callback;
+    }
+
+    public SnapshotBokehProcessor(CameraActivity activity, BokehCallback callback) {
+        mActivity = activity;
+        mContext = mActivity.getApplicationContext();
         mCallback = callback;
     }
 
@@ -124,10 +160,11 @@ public class SnapshotBokehProcessor {
                 }
             }
         },800);
-
     }
 
+
     public void stopBackgroundThread() {
+        mIsClosing = true;
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -145,6 +182,11 @@ public class SnapshotBokehProcessor {
                         mBokehProcessThread = null;
                     }
                     mBokehHandler = null;
+                    if (mImageThread != null) {
+                        mImageThread.quit();
+                        mImageThread = null;
+                    }
+                    mBokehHandler = null;
                     mTask.clear();
                 } catch (InterruptedException e){
                     e.printStackTrace();
@@ -154,6 +196,7 @@ public class SnapshotBokehProcessor {
     }
 
     public void startBackgroundThread() {
+        mIsClosing = false;
         mGdepthProcessThread = new HandlerThread("GdepthThread");
         mGdepthProcessThread.start();
         mGdepthHandler = new GdepthProcessHandler(mGdepthProcessThread.getLooper());
@@ -206,12 +249,12 @@ public class SnapshotBokehProcessor {
 
                     byte[] jpeg1 = compressBitmapToJpeg(pri);
                     byte[] jpeg2 = compressBitmapToJpeg(aux);
-                    mModule.getMainActivity().getMediaSaveService().addImage(
+                    mActivity.getMediaSaveService().addImage(
                             jpeg1,"Debug_bayer_"+namedEntity.date,
                             System.currentTimeMillis(),null,
                             primary.getWidth(),primary.getHeight(),orientation,null,null,
                             mContext.getContentResolver(),PhotoModule.PIXEL_FORMAT_JPEG);
-                    mModule.getMainActivity().getMediaSaveService().addImage(
+                    mActivity.getMediaSaveService().addImage(
                             jpeg2,"Debug_mono_"+namedEntity.date,
                             System.currentTimeMillis(),null,
                             auxiliary.getWidth(),auxiliary.getHeight(),orientation,null,null,
@@ -233,12 +276,13 @@ public class SnapshotBokehProcessor {
         }
     }
 
-    private void initeBokehProcess(NamedEntity namedEntity,byte[] primaryYuv,YuvImageSize size) {
+    private void initeBokehProcess(NamedEntity namedEntity,byte[] primaryYuv, YuvImageSize size) {
         BokehProcess process = mTask.get(namedEntity).getBokehProcess();
         if (process != null) {
             process.setPrimary(primaryYuv,size);
         }
     }
+
 
     class GdepthProcessHandler extends Handler {
         public static final int EXIT = -1;
@@ -282,7 +326,7 @@ public class SnapshotBokehProcessor {
                         if (DEBUG) {
                             Bitmap depthMap = depth.getGdepthBitmap();
                             byte[] depthJpeg = compressBitmapToJpeg(depthMap);
-                            mModule.getMainActivity().getMediaSaveService().addImage(
+                            mActivity.getMediaSaveService().addImage(
                                     depthJpeg,"Debug_gdepth_"+namedEntity.date,
                                     System.currentTimeMillis(),null,
                                     depthMap.getWidth(),depthMap.getHeight(),0,null,null,
@@ -291,7 +335,7 @@ public class SnapshotBokehProcessor {
                         mTask.get(namedEntity).getGdepthProcess().release();
                         mTask.get(namedEntity).setGdepthProcess(null);
                     } else {
-                        mModule.getMainActivity().runOnUiThread(new Runnable() {
+                        mActivity.runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
                                 mCallback.onBokenFailure(BokehCallback.GDEPTH_FAIL);
@@ -328,7 +372,7 @@ public class SnapshotBokehProcessor {
                     boolean success = process.generateBokehBitmap();
                     if (DEBUG) {
                         byte[] depthJpeg = compressBitmapToJpeg(process.getBokeh());
-                        mModule.getMainActivity().getMediaSaveService().addImage(
+                        mActivity.getMediaSaveService().addImage(
                                 depthJpeg,"Debug_bokeh_"+namedEntity.date,
                                 System.currentTimeMillis(),null,
                                 process.getBokeh().getWidth(),process.getBokeh().getHeight(),
@@ -339,7 +383,7 @@ public class SnapshotBokehProcessor {
                         Log.d(TAG,"bokeh image is generated");
                         obtainMessage(SAVE,0,0,process).sendToTarget();
                     } else {
-                         mModule.getMainActivity().runOnUiThread(new Runnable() {
+                         mActivity.runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
                                 mCallback.onBokenFailure(BokehCallback.BOKEH_FAIL);
@@ -361,7 +405,7 @@ public class SnapshotBokehProcessor {
                                 bokehProcess.compressPrimaryBitmap();
                                 obtainMessage(SAVE,3,0,bokehProcess).sendToTarget();
                             } else {
-                                mModule.getMainActivity().runOnUiThread(new Runnable() {
+                                mActivity.runOnUiThread(new Runnable() {
                                     @Override
                                     public void run() {
                                         mCallback.onBokenFailure(BokehCallback.PACK_FAIL);
@@ -377,7 +421,7 @@ public class SnapshotBokehProcessor {
                         GImage gImage = new GImage(primary,"image/jpeg");
                         GDepth depth = bokehProcess.getDepth();
                         Log.d(TAG,"images are compressed, start to save");
-                        mModule.getMainActivity().getMediaSaveService().addXmpImage(
+                        mActivity.getMediaSaveService().addXmpImage(
                                 bokeh, gImage, depth,
                                 "bokeh_"+bokehProcess.getNameEntity().title,
                                 bokehProcess.getNameEntity().date,
@@ -385,10 +429,10 @@ public class SnapshotBokehProcessor {
                                 bokehProcess.getBokeh().getWidth(),
                                 bokehProcess.getBokeh().getHeight(),
                                 bokehProcess.getOrientation(),
-                                null,null,mModule.getMainActivity().getContentResolver(),
+                                null,null,mActivity.getContentResolver(),
                                 PhotoModule.PIXEL_FORMAT_JPEG);
                         mTask.get(bokehProcess.getNameEntity()).release();
-                        mModule.getMainActivity().runOnUiThread(new Runnable() {
+                        mActivity.runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
                                 mCallback.onBokehSuccess();
@@ -420,14 +464,29 @@ public class SnapshotBokehProcessor {
         public void setPrimaryImage(ByteBuffer yuv, YuvImageSize size, byte[] parameters) {
             float len = byte2float(parameters, LENGTHRATIO_INDEX);
             mNativeEngine.setBayerLensFocusDistance(len);
-            mNativeEngine.setBayerReprocessResult(parameters);
+            mNativeEngine.setBayerReprocessResult(parameters,false);
             mNativeEngine.setPrimaryImage(yuv,size);
         }
 
         public void setAuxiliaryImage(ByteBuffer yuv, YuvImageSize size, byte[] parameters) {
-            mNativeEngine.setMonoReprocessResult(parameters);
+            mNativeEngine.setMonoReprocessResult(parameters,false);
             mNativeEngine.setAuxiliaryImage(yuv,size);
         }
+
+        public void setPrimaryImage(Image image,byte[] parameters) {
+            mNativeEngine.setBayerReprocessResult(parameters,true);
+            mNativeEngine.setBayerImage(image);
+        }
+
+        public void setAuxiliaryImage(Image image,byte[] parameters) {
+            mNativeEngine.setMonoReprocessResult(parameters,true);
+            mNativeEngine.setMonoImage(image);
+        }
+
+        public void setBayerLensFocusDistance(float len) {
+            mNativeEngine.setBayerLensFocusDistance(len);
+        }
+
 
         public boolean isReadyToGenerateGdept() {
             return  mNativeEngine.isReadyForGenerateDepth();
@@ -492,6 +551,7 @@ public class SnapshotBokehProcessor {
         private int mOrientation;
         private Location mLoc;
         private Rect mFocus;
+        private Image mBayerImage;
 
         public BokehProcess(NamedEntity namedEntity, Location loc,int orientation,Rect focus) {
             mNameEntity = namedEntity;
@@ -514,6 +574,11 @@ public class SnapshotBokehProcessor {
 
         public void setPrimary(byte[] primaryYuv,YuvImageSize size) {
             mPrimary = getBitmapFromYuv(mContext,primaryYuv,size);
+        }
+
+        public void setPrimary(Image image) {
+            mBayerImage = image;
+            mPrimary = getBitmapFromImage(mContext,image);
         }
 
         public Bitmap getPrimary() {
@@ -567,14 +632,17 @@ public class SnapshotBokehProcessor {
                 mBokeh = Bitmap.createBitmap(renderwidth,renderHeight, Bitmap.Config.ARGB_8888);
                 Point center;
                 if (mFocus != null) {
-                    Matrix matrix = new Matrix();
-                    CameraUtil.prepareMatrix(matrix,false,0,roiRect);
-                    RectF focus = CameraUtil.rectToRectF(mFocus);
-                    matrix.mapRect(focus);
-                    center = new Point((int)focus.centerX(),(int)focus.centerY());
+                    if (mBayerImage != null) {
+                        center = new Point(mFocus.centerX(),mFocus.centerY());
+                    } else {
+                        Matrix matrix = new Matrix();
+                        CameraUtil.prepareMatrix(matrix,false,0,roiRect);
+                        RectF focus = CameraUtil.rectToRectF(mFocus);
+                        matrix.mapRect(focus);
+                        center = new Point((int)focus.centerX(),(int)focus.centerY());
+                    }
                 }else {
                     center = new Point(roiRect.centerX(),roiRect.centerY());
-
                 }
                 dualCameraEffect.map(center);
                 ret = dualCameraEffect.render(
@@ -598,6 +666,10 @@ public class SnapshotBokehProcessor {
             if (mBokeh != null) {
                 mBokeh.recycle();
             }
+            if (mBayerImage != null) {
+                mBayerImage.close();
+            }
+            mBayerImage = null;
             mPriJpeg = null;
             mGDepth = null;
         }
@@ -637,7 +709,7 @@ public class SnapshotBokehProcessor {
             }
             mTask.remove(mKey);
             if (mTask.size() < MAX_PROCESS_QUEUE) {
-                mModule.getMainActivity().runOnUiThread(new Runnable() {
+                mActivity.runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
                         mCallback.enableShutterLock(true);
@@ -698,14 +770,39 @@ public class SnapshotBokehProcessor {
         byte[] data = new byte[yLength * 3 /2];
         System.arraycopy(yuv,0,data,0,yLength);
         System.arraycopy(yuv,size.getStrides()[0] * size.getScanline(),data,yLength,yLength/2);
+        return getBitmapFromYuvData(context,data,size.getWidth(),size.getHeight());
+    }
 
+    public static Bitmap getBitmapFromImage(Context context,Image image) {
+        try{
+            int width = image.getWidth();
+            int height = image.getHeight();
+            ByteBuffer dataY= image.getPlanes()[0].getBuffer();
+            ByteBuffer dataUV = image.getPlanes()[2].getBuffer();
+            dataY.rewind();
+            dataUV.rewind();
+            byte[] bytesY = new byte[dataY.remaining()];
+            dataY.get(bytesY);
+            byte[] bytesUV = new byte[dataUV.remaining()];
+            dataUV.get(bytesUV);
+            byte[] data = new byte[bytesY.length+bytesUV.length];
+            System.arraycopy(bytesY,0,data,0,bytesY.length);
+            System.arraycopy(bytesUV,0,data,bytesY.length,bytesUV.length);
+            ByteBuffer buffer = ByteBuffer.wrap(data);
+            return getBitmapFromYuvData(context,buffer.array(),width,height);
+        }catch (IllegalStateException e) {
+            return null;
+        }
+    }
+
+    public static Bitmap getBitmapFromYuvData(Context context, byte[] data, int width, int height) {
         RenderScript rs = RenderScript.create(context);
         ScriptIntrinsicYuvToRGB yuvToRgbIntrinsic =
                 ScriptIntrinsicYuvToRGB.create(rs, Element.RGBA_8888(rs));
         Type.Builder yuvTypeBuilder = new Type.Builder(rs, Element.U8(rs)).setX(data.length);
         Type.Builder rgbTypeBuilder = new Type.Builder(rs, Element.RGBA_8888(rs));
-        rgbTypeBuilder.setX(size.getWidth());
-        rgbTypeBuilder.setY(size.getHeight());
+        rgbTypeBuilder.setX(width);
+        rgbTypeBuilder.setY(height);
 
         Allocation input = Allocation.createTyped(rs, yuvTypeBuilder.create(),
                 Allocation.USAGE_SCRIPT);
@@ -716,7 +813,7 @@ public class SnapshotBokehProcessor {
         yuvToRgbIntrinsic.setInput(input);
         yuvToRgbIntrinsic.forEach(output);
 
-        Bitmap bitmap = Bitmap.createBitmap(size.getWidth(), size.getHeight(),
+        Bitmap bitmap = Bitmap.createBitmap(width, height,
                 Bitmap.Config.ARGB_8888);
         output.copyTo(bitmap);
 
@@ -787,5 +884,348 @@ public class SnapshotBokehProcessor {
         public void enableShutterLock(boolean enable);
         public void onBokehSuccess();
         public void onBokenFailure(int reason);
+    }
+
+    //for UDCF-Lite
+    public void init(StreamConfigurationMap map, int width, int height) {
+        mImageThread = new HandlerThread("ImageThread");
+        mImageThread.start();
+        mImageHandler = new ImageProcessHandler(mImageThread.getLooper());
+        mImageReader[CAM_TYPE_BAYER] = createImageReader(CAM_TYPE_BAYER,width,height);
+        mImageReader[CAM_TYPE_MONO] = createImageReader(CAM_TYPE_MONO,width,height);
+        Size minJpegImageSize = findMinOutputJpegSize(map);
+        int jpegWidth = minJpegImageSize.getWidth();
+        int jpegHeight = minJpegImageSize.getHeight();
+        //in HAL3, need to add jpeg imageReader to get cpp and isp info.
+        mJpegReader[CAM_TYPE_BAYER] = ImageReader.newInstance(
+                jpegWidth,jpegHeight,ImageFormat.JPEG,MAX_PROCESS_QUEUE);
+        mJpegReader[CAM_TYPE_BAYER].setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
+            @Override
+            public void onImageAvailable(ImageReader reader) {
+                Image image = reader.acquireNextImage();
+                image.close();
+            }
+        },null);
+        mJpegReader[CAM_TYPE_MONO] = ImageReader.newInstance(
+                jpegWidth,jpegHeight,ImageFormat.JPEG,MAX_PROCESS_QUEUE);
+        mJpegReader[CAM_TYPE_MONO].setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
+            @Override
+            public void onImageAvailable(ImageReader reader) {
+                Image image = reader.acquireNextImage();
+                image.close();
+            }
+        },null);
+        android.hardware.camera2.CameraManager cm = (android.hardware.camera2.CameraManager)
+                mContext.getSystemService(Context.CAMERA_SERVICE);
+        try {
+            CameraCharacteristics cc = cm.getCameraCharacteristics("0");
+            byte[] blob = cc.get(OTP_CALIB_BLOB);
+            mOtpMetaData = ClearSightNativeEngine.CamSystemCalibrationData.createFromBytes(blob);
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    public void setBokehFocus(Rect focus) {
+        Message msg = new Message();
+        msg.what = ImageProcessHandler.SET_FOCUS;
+        msg.obj = focus;
+        mImageHandler.sendMessage(msg);
+    }
+
+    public CaptureRequest.Builder createCaptureRequest(CameraDevice device) throws CameraAccessException {
+        Log.d(TAG, "createCaptureRequest");
+
+        CaptureRequest.Builder builder = device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+        return builder;
+    }
+
+    public void createCaptureSession(boolean bayer, CameraDevice device, List<Surface> surfaces,
+                                     CameraCaptureSession.StateCallback captureSessionCallback) throws CameraAccessException {
+
+        Log.d(TAG, "createCaptureSession: " + bayer);
+        int cam = bayer?CAM_TYPE_BAYER:CAM_TYPE_MONO;
+        surfaces.add(mImageReader[cam].getSurface());
+        surfaces.add(mJpegReader[cam].getSurface());
+        device.createCaptureSession(surfaces,captureSessionCallback,null);
+    }
+	public void onCaptureSessionConfigured(boolean bayer, CameraCaptureSession session) {
+        Log.d(TAG, "onCaptureSessionConfigured: " + bayer);
+
+        mCaptureSessions[bayer?CAM_TYPE_BAYER:CAM_TYPE_MONO] = session;
+    }
+
+
+    public void capture(boolean bayer, CameraCaptureSession session, CaptureRequest.Builder requestBuilder,
+                        Handler captureCallbackHandler) throws CameraAccessException {
+        Log.d(TAG, "capture: " + bayer);
+
+        final int cam = bayer?CAM_TYPE_BAYER:CAM_TYPE_MONO;
+
+        CameraCaptureSession.CaptureCallback captureCallback = new CameraCaptureSession.CaptureCallback() {
+            @Override
+            public void onCaptureCompleted(CameraCaptureSession session,
+                                           CaptureRequest request,
+                                           TotalCaptureResult result) {
+                Log.d(TAG, "capture - onCaptureCompleted: " + cam);
+                if(mIsClosing)
+                    Log.d(TAG, "capture - onCaptureCompleted - closing");
+                else
+                    mImageHandler.obtainMessage(ImageProcessHandler.NEW_CAPTURE_RESULT,
+                            cam, 0, result).sendToTarget();
+            }
+
+            @Override
+            public void onCaptureFailed(CameraCaptureSession session,
+                                        CaptureRequest request,
+                                        CaptureFailure result) {
+                Log.d(TAG, "capture - onCaptureFailed: " + cam);
+                if(mIsClosing)
+                    Log.d(TAG, "capture - onCaptureFailed - closing");
+                else
+                    mImageHandler.obtainMessage(ImageProcessHandler.CAPTURE_FAIL,
+                            cam, 0, result).sendToTarget();
+            }
+
+            @Override
+            public void onCaptureSequenceCompleted(CameraCaptureSession session, int
+                    sequenceId, long frameNumber) {
+                Log.d(TAG, "capture - onCaptureSequenceCompleted: " + cam);
+            }
+        };
+        requestBuilder.addTarget(mImageReader[cam].getSurface());
+        session.capture(requestBuilder.build(),captureCallback,captureCallbackHandler);
+    }
+    private ImageReader createImageReader(final int cam, int width, int height) {
+        ImageReader reader = ImageReader.newInstance(width, height,
+                ImageFormat.YUV_420_888, MAX_PROCESS_QUEUE);
+        reader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
+            @Override
+            public void onImageAvailable(ImageReader reader) {
+                Log.d(TAG, "onImageAvailable for cam: " + cam);
+                Image image = reader.acquireNextImage();
+                if(mIsClosing) {
+                    Log.d(TAG, "onImageAvailable - closing");
+                    image.close();
+                } else {
+                    mImageHandler.obtainMessage(ImageProcessHandler.NEW_IMAGE,
+                            cam,0,image).sendToTarget();
+                }
+            }
+        }, null);
+
+        return reader;
+    }
+
+    class ImageProcessHandler extends Handler {
+        public static final int NEW_IMAGE = 1;
+        public static final int NEW_CAPTURE_RESULT = 2;
+        public static final int CREATE_BOKEH_TASK = 3;
+        public static final int SET_FOCUS =4;
+        public static final int SAVE_BAYER_JPEG = 5;
+        public static final int CAPTURE_FAIL = 6;
+        private PhotoModule.NamedImages mNamedImages = new PhotoModule.NamedImages();
+
+        private Image mBayerImage;
+        private Image mMonoImage;
+        private TotalCaptureResult mBayerResult;
+        private TotalCaptureResult mMonoResult;
+        private NamedEntity mNamedEntity;
+        private Rect mFocus;
+
+        ImageProcessHandler(Looper looper) {
+            super(looper);
+        }
+
+        @Override
+        public void handleMessage(Message msg) {
+            Log.d(TAG,"ImageProcessHandler handleMessage =" + msg.what);
+            switch (msg.what) {
+                case NEW_IMAGE:
+                    int cam = msg.arg1;
+                    if (cam == CAM_TYPE_BAYER) {
+                        mBayerImage = (Image)msg.obj;
+                        mNamedImages.nameNewImage(System.currentTimeMillis());
+                        mNamedEntity = mNamedImages.getNextNameEntity();
+                    } else if (cam == CAM_TYPE_MONO) {
+                        mMonoImage = (Image)msg.obj;
+                    }
+                    if (isReadyToProcess()) {
+                        obtainMessage(CREATE_BOKEH_TASK).sendToTarget();
+                    }
+                    break;
+                case NEW_CAPTURE_RESULT:
+                    int id = msg.arg1;
+                    TotalCaptureResult result = (TotalCaptureResult) msg.obj;
+                    if (id == CAM_TYPE_BAYER) {
+                        mBayerResult = result;
+                        Face[] face = mBayerResult.get(CaptureResult.STATISTICS_FACES);
+                        if (face != null && face.length != 0 && face[0] != null) {
+                            mFocus = face[0].getBounds();
+                        }
+                    } else if (id == CAM_TYPE_MONO) {
+                        mMonoResult = result;
+                    }
+                    if (isReadyToProcess()) {
+                        obtainMessage(CREATE_BOKEH_TASK).sendToTarget();
+                    }
+                    break;
+                case CREATE_BOKEH_TASK:
+                    Location location = mBayerResult.get(CaptureResult.JPEG_GPS_LOCATION);
+                    int orientation = mBayerResult.get(CaptureResult.JPEG_ORIENTATION);
+                    createTask(mBayerImage,mMonoImage,mBayerResult,mMonoResult,
+                            mNamedEntity,mFocus,location,orientation);
+                    cleanImageAndResult();
+                    mCallback.enableShutterLock(true);
+                    break;
+                case SET_FOCUS:
+                    mFocus = (Rect)msg.obj;
+                    if (isReadyToProcess()) {
+                        obtainMessage(CREATE_BOKEH_TASK).sendToTarget();
+                    }
+                    break;
+                case SAVE_BAYER_JPEG:
+                    long captureTime = System.currentTimeMillis();
+                    mNamedImages.nameNewImage(captureTime);
+                    NamedEntity name = mNamedImages.getNextNameEntity();
+                    String title = (name == null) ? null : name.title;
+                    long date = (name == null) ? -1 : name.date;
+                    byte[] bytes = (byte[])msg.obj;
+                    int ori = msg.arg1;
+                    int width = mImageReader[CAM_TYPE_BAYER].getWidth();
+                    int height = mImageReader[CAM_TYPE_BAYER].getHeight();
+                    mActivity.getMediaSaveService().addImage(bytes, title, date,
+                            null,width , height, ori, null,null,
+                            mActivity.getContentResolver(), "jpeg");
+                    break;
+                case CAPTURE_FAIL:
+                    mCallback.onBokenFailure(BokehCallback.CAPTURE_FAIL);
+                    if (mBayerImage != null) {
+                        mBayerImage.close();
+                    }
+                    if (mMonoImage != null) {
+                        mMonoImage.close();
+                    }
+                    cleanImageAndResult();
+                    mCallback.enableShutterLock(true);
+                    break;
+            }
+        }
+
+        private boolean isReadyToProcess() {
+            return mBayerImage != null && mMonoImage != null && mBayerResult != null && mMonoResult
+                    != null;
+        }
+
+        private void cleanImageAndResult(){
+            mBayerImage = null;
+            mMonoImage = null;
+            mBayerResult = null;
+            mMonoResult = null;
+            mFocus = null;
+        }
+    }
+
+    private void initGdepthProcess(Image bayer, Image mono,
+                                   TotalCaptureResult bayerResult, TotalCaptureResult monoResult,
+                                   NamedEntity nameEntity) {
+        GdepthProcess process = mTask.get(nameEntity).getGdepthProcess();
+        if (process != null){
+            byte[] primaryParam = bayerResult.get(SCALE_CROP_ROTATION_REPROCESS_BLOB);
+            byte[] auxiliaryParam = monoResult.get(SCALE_CROP_ROTATION_REPROCESS_BLOB);
+            if (DEBUG) {
+                StringBuilder sb1 = new StringBuilder();
+                StringBuilder sb2 = new StringBuilder();
+                for (int i = 0; i< primaryParam.length; i++) {
+                    if(i%16 == 0)
+                        sb1.append("\n");
+                    sb1.append(String.format("%02X ", primaryParam[i]));
+                }
+                for (int j = 0; j < auxiliaryParam.length; j++) {
+                    if(j%16 == 0)
+                        sb1.append("\n");
+                    sb1.append(String.format("%02X ", auxiliaryParam[j]));
+                }
+                Log.d(TAG, sb1.toString());
+                Log.d(TAG, sb2.toString());
+            }
+            float len = bayerResult.get(CaptureResult.LENS_FOCUS_DISTANCE);
+            Log.d(TAG,"focusDistance = " + len);
+            process.setBayerLensFocusDistance(len);
+            process.setPrimaryImage(bayer, primaryParam);
+            process.setAuxiliaryImage(mono, auxiliaryParam);
+        }
+    }
+
+    private void initeBokehProcess(NamedEntity namedEntity,Image image) {
+        BokehProcess process = mTask.get(namedEntity).getBokehProcess();
+        if (process != null) {
+            process.setPrimary(image);
+            if (process.getPrimary() != null) {
+                process.compressPrimaryBitmap();
+                mImageHandler.obtainMessage(
+                        ImageProcessHandler.SAVE_BAYER_JPEG, process.getOrientation(),0,
+                        process.getPrimaryJpeg()).sendToTarget();
+            }
+        }
+    }
+
+    public boolean createTask(final Image bayer,final Image mono,
+                              final TotalCaptureResult bayerResult,
+                              final TotalCaptureResult monoResult,
+                              final NamedEntity namedEntity,
+                              final Rect focus,
+                              final Location loc,
+                              final int orientation) {
+        if (mTask.size() >= (MAX_PROCESS_QUEUE - 1)) {
+            mCallback.enableShutterLock(false);
+        } else {
+            mCallback.enableShutterLock(true);
+        }
+        ProcessTask task = new ProcessTask(namedEntity);
+        GdepthProcess gdepthProcess = new GdepthProcess(namedEntity);
+        BokehProcess bokehProcess = new BokehProcess(namedEntity,loc,orientation,focus);
+        task.setGdepthProcess(gdepthProcess);
+        task.setBokehProcess(bokehProcess);
+        mTask.put(namedEntity, task);
+        if (DEBUG) {
+            Bitmap pri = getBitmapFromImage(mContext,bayer);
+            Bitmap aux = getBitmapFromImage(mContext,mono);
+
+            byte[] jpeg1 = compressBitmapToJpeg(pri);
+            byte[] jpeg2 = compressBitmapToJpeg(aux);
+            mActivity.getMediaSaveService().addImage(
+                    jpeg1,"Debug_bayer_"+namedEntity.date,
+                    System.currentTimeMillis(),null,
+                    bayer.getWidth(),bayer.getHeight(),orientation,null,null,
+                    mContext.getContentResolver(),PhotoModule.PIXEL_FORMAT_JPEG);
+            mActivity.getMediaSaveService().addImage(
+                    jpeg2,"Debug_mono_"+namedEntity.date,
+                    System.currentTimeMillis(),null,
+                    mono.getWidth(),mono.getHeight(),orientation,null,null,
+                    mContext.getContentResolver(),PhotoModule.PIXEL_FORMAT_JPEG);
+        }
+        mBokehHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                initeBokehProcess(namedEntity,bayer);
+            }
+        });
+        mGdepthHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                initGdepthProcess(bayer,mono,bayerResult,monoResult,namedEntity);
+                mGdepthHandler.obtainMessage(
+                        GdepthProcessHandler.GENERATE_GDEPTH,namedEntity).sendToTarget();
+            }
+        });
+        return true;
+    }
+
+    private Size findMinOutputJpegSize(StreamConfigurationMap map) {
+        Size[] jpegSizes = map.getOutputSizes(ImageFormat.JPEG);
+        Arrays.sort(jpegSizes, new CameraUtil.CompareSizesByArea());
+        return jpegSizes[0];
     }
 }

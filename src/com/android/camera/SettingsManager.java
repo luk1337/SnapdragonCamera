@@ -93,6 +93,7 @@ public class SettingsManager implements ListMenu.SettingsListener {
     public static final String KEY_MONO_PREVIEW = "pref_camera2_mono_preview_key";
     public static final String KEY_CLEARSIGHT = "pref_camera2_clearsight_key";
     public static final String KEY_MPO = "pref_camera2_mpo_key";
+    public static final String KEY_BOKEH = "pref_camera2_bokeh_key";
     public static final String KEY_FILTER_MODE = "pref_camera2_filter_mode_key";
     public static final String KEY_COLOR_EFFECT = "pref_camera2_coloreffect_key";
     public static final String KEY_SCENE_MODE = "pref_camera2_scenemode_key";
@@ -488,6 +489,7 @@ public class SettingsManager implements ListMenu.SettingsListener {
         ListPreference monoPreview = mPreferenceGroup.findPreference(KEY_MONO_PREVIEW);
         ListPreference monoOnly = mPreferenceGroup.findPreference(KEY_MONO_ONLY);
         ListPreference mpo = mPreferenceGroup.findPreference(KEY_MPO);
+        ListPreference bokeh = mPreferenceGroup.findPreference(KEY_BOKEH);
         ListPreference redeyeReduction = mPreferenceGroup.findPreference(KEY_REDEYE_REDUCTION);
         ListPreference videoQuality = mPreferenceGroup.findPreference(KEY_VIDEO_QUALITY);
         ListPreference videoEncoder = mPreferenceGroup.findPreference(KEY_VIDEO_ENCODER);
@@ -543,6 +545,8 @@ public class SettingsManager implements ListMenu.SettingsListener {
             if (monoPreview != null) removePreference(mPreferenceGroup, KEY_MONO_PREVIEW);
             if (monoOnly != null) removePreference(mPreferenceGroup, KEY_MONO_ONLY);
             if (mpo != null) removePreference(mPreferenceGroup, KEY_MPO);
+
+            if (bokeh != null) removePreference(mPreferenceGroup, KEY_BOKEH);
         }
 
         if (redeyeReduction != null) {
