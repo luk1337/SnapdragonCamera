@@ -92,6 +92,7 @@ public class SnapshotBokehProcessor {
 
     private static final String PROPERTY_QUEUE = "persist.vendor.snapcam.bokeh.queue";
     private static final String PROPERTY_BOKEH_DEBUG = "persist.vendor.snapcam.bokeh.debug";
+    private static final String PROPERTY_UPSCALE = "persist.vendor.snapcam.bokeh.scale";
 
     private static CameraCharacteristics.Key<byte[]> OTP_CALIB_BLOB =
             new CameraCharacteristics.Key<>(
@@ -103,6 +104,8 @@ public class SnapshotBokehProcessor {
 
     private static final int MAX_PROCESS_QUEUE = SystemProperties.getInt(PROPERTY_QUEUE,4);
     private static final Boolean DEBUG = SystemProperties.getBoolean(PROPERTY_BOKEH_DEBUG,false);
+    private static final Boolean UPSCALE = SystemProperties.getBoolean(PROPERTY_UPSCALE,false);
+    private static final Size SIZE_13MP = new Size(4160,3210);
     public static final int LENGTHRATIO_INDEX = 20;
     public static final int STRIDE_INDEX = 12;
     public static final int SCANLINE_INDEX = 16;
@@ -127,6 +130,7 @@ public class SnapshotBokehProcessor {
     private boolean mIsClosing;
     private HandlerThread mImageThread;
     private ImageProcessHandler mImageHandler;
+    private Size mUpscaleSize;
 
 
     public SnapshotBokehProcessor(PhotoModule module,
@@ -654,6 +658,8 @@ public class SnapshotBokehProcessor {
                     paint.setStrokeWidth(5.0f);
                     canvas.drawCircle(center.x, center.y, 30,paint);
                 }
+                if (UPSCALE)
+                    mBokeh = upScaleImage(mBokeh);
             }
             dualCameraEffect.release();
             return ret;
@@ -893,6 +899,8 @@ public class SnapshotBokehProcessor {
         mImageHandler = new ImageProcessHandler(mImageThread.getLooper());
         mImageReader[CAM_TYPE_BAYER] = createImageReader(CAM_TYPE_BAYER,width,height);
         mImageReader[CAM_TYPE_MONO] = createImageReader(CAM_TYPE_MONO,width,height);
+        if (UPSCALE)
+            mUpscaleSize = SIZE_13MP;
         Size minJpegImageSize = findMinOutputJpegSize(map);
         int jpegWidth = minJpegImageSize.getWidth();
         int jpegHeight = minJpegImageSize.getHeight();
@@ -1093,8 +1101,14 @@ public class SnapshotBokehProcessor {
                     long date = (name == null) ? -1 : name.date;
                     byte[] bytes = (byte[])msg.obj;
                     int ori = msg.arg1;
-                    int width = mImageReader[CAM_TYPE_BAYER].getWidth();
-                    int height = mImageReader[CAM_TYPE_BAYER].getHeight();
+                    int width,height;
+                    if (UPSCALE && mUpscaleSize != null) {
+                        width = mUpscaleSize.getWidth();
+                        height = mUpscaleSize.getHeight();
+                    } else {
+                        width = mImageReader[CAM_TYPE_BAYER].getWidth();
+                        height = mImageReader[CAM_TYPE_BAYER].getHeight();
+                    }
                     mActivity.getMediaSaveService().addImage(bytes, title, date,
                             null,width , height, ori, null,null,
                             mActivity.getContentResolver(), "jpeg");
@@ -1163,10 +1177,18 @@ public class SnapshotBokehProcessor {
         if (process != null) {
             process.setPrimary(image);
             if (process.getPrimary() != null) {
+                byte[] jpegBytes;
+                if (UPSCALE) {
+                    Bitmap bitmap = upScaleImage(process.getPrimary());
+                    jpegBytes = compressBitmapToJpeg(bitmap);
+                } else {
+                    process.compressPrimaryBitmap();
+                    jpegBytes = process.getPrimaryJpeg();
+                }
                 process.compressPrimaryBitmap();
                 mImageHandler.obtainMessage(
                         ImageProcessHandler.SAVE_BAYER_JPEG, process.getOrientation(),0,
-                        process.getPrimaryJpeg()).sendToTarget();
+                        jpegBytes).sendToTarget();
             }
         }
     }
@@ -1227,5 +1249,16 @@ public class SnapshotBokehProcessor {
         Size[] jpegSizes = map.getOutputSizes(ImageFormat.JPEG);
         Arrays.sort(jpegSizes, new CameraUtil.CompareSizesByArea());
         return jpegSizes[0];
+    }
+
+    private Bitmap upScaleImage(Bitmap origin) {
+        Bitmap scale;
+        if (mUpscaleSize != null) {
+            scale = Bitmap.createScaledBitmap(origin,
+                    mUpscaleSize.getWidth(),mUpscaleSize.getHeight(),true);
+        } else {
+            scale = origin;
+        }
+        return scale;
     }
 }
