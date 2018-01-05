@@ -129,6 +129,7 @@ public class SnapshotBokehProcessor {
     private CameraCaptureSession[] mCaptureSessions = new CameraCaptureSession[NUM_CAM];
     private boolean mIsClosing;
     private HandlerThread mImageThread;
+    private Matrix mFocusMatrix;
     private ImageProcessHandler mImageHandler;
     private Size mUpscaleSize;
 
@@ -897,6 +898,13 @@ public class SnapshotBokehProcessor {
         mImageThread = new HandlerThread("ImageThread");
         mImageThread.start();
         mImageHandler = new ImageProcessHandler(mImageThread.getLooper());
+        Size maxSize = findMaxOutputSize(map);
+        RectF image = new RectF(0,0,
+                width,height);
+        RectF focus = new RectF(0,0,
+                maxSize.getWidth(),maxSize.getHeight());
+        mFocusMatrix = new Matrix();
+        mFocusMatrix.setRectToRect(focus,image, Matrix.ScaleToFit.FILL);
         mImageReader[CAM_TYPE_BAYER] = createImageReader(CAM_TYPE_BAYER,width,height);
         mImageReader[CAM_TYPE_MONO] = createImageReader(CAM_TYPE_MONO,width,height);
         if (UPSCALE)
@@ -1089,6 +1097,11 @@ public class SnapshotBokehProcessor {
                     break;
                 case SET_FOCUS:
                     mFocus = (Rect)msg.obj;
+                    if (mFocusMatrix != null && mFocus != null) {
+                        RectF ret = CameraUtil.rectToRectF(mFocus);
+                        mFocusMatrix.mapRect(ret);
+                        mFocus = CameraUtil.rectFToRect(ret);
+                    }
                     if (isReadyToProcess()) {
                         obtainMessage(CREATE_BOKEH_TASK).sendToTarget();
                     }
@@ -1243,6 +1256,12 @@ public class SnapshotBokehProcessor {
             }
         });
         return true;
+    }
+
+    private Size findMaxOutputSize(StreamConfigurationMap map) {
+        Size[] sizes = map.getOutputSizes(ImageFormat.YUV_420_888);
+        Arrays.sort(sizes, new CameraUtil.CompareSizesByArea());
+        return sizes[sizes.length-1];
     }
 
     private Size findMinOutputJpegSize(StreamConfigurationMap map) {
