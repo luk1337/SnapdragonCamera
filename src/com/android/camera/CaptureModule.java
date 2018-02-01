@@ -3646,11 +3646,10 @@ public class CaptureModule implements CameraModule, PhotoController,
 
     @Override
     public void enableShutterLock(boolean enable) {
-        if (enable) {
+        mUI.enableShutter(enable);
+        if (!mPaused && enable) {
             unlockFocus(BAYER_ID);
             unlockFocus(MONO_ID);
-        } else {
-
         }
     }
 

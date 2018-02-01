@@ -172,7 +172,7 @@ public class DDMNativeEngine {
         mAuxiliaryHeight = mMonoImage.getHeight();
     }
 
-    public boolean dualCameraGenerateDDMbyIMage(byte[] depthMapBuffer, int depthMapStride, Rect roiRect) {
+    public boolean dualCameraGenerateDDMbyImage(byte[] depthMapBuffer, int depthMapStride, Rect roiRect) {
         if ( mLensFocusDistance == 0 ){
             Log.e(TAG, " dualCameraGenerateDDM error: mLensFocusDistance is 0");
             return false;
@@ -242,7 +242,7 @@ public class DDMNativeEngine {
         if (mPrimaryY == null || mPrimaryUV == null || 
                 mAuxiliaryY == null || mAuxiliaryUV == null) {
             Log.e(TAG, "PrimaryYUV or AuxiliaryYUV is null");
-            return dualCameraGenerateDDMbyIMage(depthMapBuffer,depthMapStride,roiRect);
+            return dualCameraGenerateDDMbyImage(depthMapBuffer,depthMapStride,roiRect);
         }
 
         if ( depthMapBuffer == null ) {
