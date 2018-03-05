@@ -436,6 +436,7 @@ public class SnapshotBokehProcessor {
                                 bokehProcess.getOrientation(),
                                 null,null,mActivity.getContentResolver(),
                                 PhotoModule.PIXEL_FORMAT_JPEG);
+                        mActivity.updateThumbnail(bokeh);
                         mTask.get(bokehProcess.getNameEntity()).release();
                         mActivity.runOnUiThread(new Runnable() {
                             @Override
