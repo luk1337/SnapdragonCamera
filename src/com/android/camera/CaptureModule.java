@@ -3626,7 +3626,6 @@ public class CaptureModule implements CameraModule, PhotoController,
                 Toast.makeText(mActivity,"Snapshot Bokeh succeed",Toast.LENGTH_SHORT).show();
             }
         });
-        Toast.makeText(mActivity,"Snapshot Bokeh succeed",Toast.LENGTH_SHORT).show();
     }
 
     @Override

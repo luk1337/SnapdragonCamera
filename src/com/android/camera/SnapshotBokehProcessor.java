@@ -436,6 +436,7 @@ public class SnapshotBokehProcessor {
                                 bokehProcess.getOrientation(),
                                 null,null,mActivity.getContentResolver(),
                                 PhotoModule.PIXEL_FORMAT_JPEG);
+                        mActivity.updateThumbnail(bokeh);
                         mTask.get(bokehProcess.getNameEntity()).release();
                         mActivity.runOnUiThread(new Runnable() {
                             @Override
@@ -1157,7 +1158,9 @@ public class SnapshotBokehProcessor {
     private void initGdepthProcess(Image bayer, Image mono,
                                    TotalCaptureResult bayerResult, TotalCaptureResult monoResult,
                                    NamedEntity nameEntity) {
-        GdepthProcess process = mTask.get(nameEntity).getGdepthProcess();
+        ProcessTask task = mTask.get(nameEntity);
+        if (task == null) return;
+        GdepthProcess process = task.getGdepthProcess();
         if (process != null){
             byte[] primaryParam = bayerResult.get(SCALE_CROP_ROTATION_REPROCESS_BLOB);
             byte[] auxiliaryParam = monoResult.get(SCALE_CROP_ROTATION_REPROCESS_BLOB);
@@ -1186,7 +1189,9 @@ public class SnapshotBokehProcessor {
     }
 
     private void initeBokehProcess(NamedEntity namedEntity,Image image) {
-        BokehProcess process = mTask.get(namedEntity).getBokehProcess();
+        ProcessTask task = mTask.get(namedEntity);
+        if (task == null) return;
+        BokehProcess process = task.getBokehProcess();
         if (process != null) {
             process.setPrimary(image);
             if (process.getPrimary() != null) {
