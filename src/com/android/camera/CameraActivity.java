@@ -1452,6 +1452,7 @@ public class CameraActivity extends Activity
 
         getWindow().requestFeature(Window.FEATURE_ACTION_BAR);
 
+        CameraHolder.setCameraContext(this);
         mSettingsManager = new SettingsManager(this);
 
         LayoutInflater inflater = getLayoutInflater();
