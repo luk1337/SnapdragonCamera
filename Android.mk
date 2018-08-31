@@ -22,12 +22,14 @@ LOCAL_AAPT_FLAGS := \
         --version-name "$(version_name_package)" \
         --version-code $(version_code_package) \
 
-LOCAL_PACKAGE_NAME := SnapdragonCamera
+LOCAL_PACKAGE_NAME := Snap
 LOCAL_PRIVILEGED_MODULE := true
 LOCAL_PRIVATE_PLATFORM_APIS:=true
 
 #LOCAL_SDK_VERSION := current
 LOCAL_RENDERSCRIPT_TARGET_API := 23
+
+LOCAL_AAPT_FLAGS += --rename-manifest-package org.lineageos.snap
 
 LOCAL_OVERRIDES_PACKAGES := Camera2
 
