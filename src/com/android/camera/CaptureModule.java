@@ -678,7 +678,11 @@ public class CaptureModule implements CameraModule, PhotoController,
     private void detectHDRMode(CaptureResult result, int id) {
         String value = mSettingsManager.getValue(SettingsManager.KEY_SCENE_MODE);
         String autoHdr = mSettingsManager.getValue(SettingsManager.KEY_AUTO_HDR);
-        Byte hdrScene = result.get(CaptureModule.isHdr);
+        Byte hdrScene = null;
+        try {
+            hdrScene = result.get(CaptureModule.isHdr);
+        } catch (Exception ex) {
+        }
         if (value == null || hdrScene == null) return;
         mAutoHdrEnable = false;
         if (autoHdr != null && "enable".equals(autoHdr) && "0".equals(value) && hdrScene == 1) {
@@ -3777,7 +3781,9 @@ public class CaptureModule implements CameraModule, PhotoController,
         mSupportedMaxPictureSize = prevSizes[0];
         Size[] rawSize = mSettingsManager.getSupportedOutputSize(getMainCameraId(),
                     ImageFormat.RAW10);
-        mSupportedRawPictureSize = rawSize[0];
+        if (rawSize != null) {
+            mSupportedRawPictureSize = rawSize[0];
+        }
         mPreviewSize = getOptimalPreviewSize(mPictureSize, prevSizes);
         Size[] thumbSizes = mSettingsManager.getSupportedThumbnailSizes(getMainCameraId());
         mPictureThumbSize = getOptimalPreviewSize(mPictureSize, thumbSizes); // get largest thumb size
